@@ -42,7 +42,8 @@ public final class HyperchatProbe extends Instrumentation {
             String mode = args.getString("mode", "fixture");
             switch (mode) {
                 case "dump": result.putString("stream", dump()); break;
-                case "guide": guide(result); break;
+                case "guide": guide(result, MAP); break;
+                case "fixture-guide": guide(result, FIXTURE); break;
                 case "naver-search": search(result, MAP); break;
                 case "fixture": search(result, FIXTURE); break;
                 default: throw new AssertionError("Unsupported test mode");
@@ -56,31 +57,30 @@ public final class HyperchatProbe extends Instrumentation {
         }
     }
 
-    private void guide(Bundle result) throws Exception {
-        String searchLabel = "Search on NAVER Maps";
-        requireVisible(n -> MAP.equals(string(n.getPackageName())) &&
+    private void guide(Bundle result, String target) throws Exception {
+        boolean fixture = FIXTURE.equals(target);
+        if (fixture) launchFixture();
+        String searchLabel = fixture ? "장소 검색" : "Search on NAVER Maps";
+        requireVisible(n -> target.equals(string(n.getPackageName())) &&
             (string(n.getText()).equals(searchLabel) || string(n.getContentDescription()).equals(searchLabel)),
-            10000, "NAVER Maps home search control");
+            10000, "target home search control");
         openOverlay();
-        send("Which button should I tap to search for a place?");
+        send(fixture ? "Which button should I tap to search for a place? Quote its Korean label." :
+            "Which button should I tap to search for a place?");
         requireVisible(n -> id(n, "hc_status") && string(n.getText()).startsWith("온디바이스 응답 완료"),
             95000, "real on-device response");
         AccessibilityNodeInfo reply = requireVisible(n -> {
             String text = string(n.getText());
             return id(n, "hc_reply") && text.contains(searchLabel) &&
                 !text.contains("Visible controls:") && !text.contains("Question:");
-        }, 4000, "reply citing the actual NAVER Maps control");
-        requireVisible(n -> MAP.equals(string(n.getPackageName())), 5000, "NAVER Maps still beneath overlay");
+        }, 4000, "reply citing the actual target control");
+        requireVisible(n -> target.equals(string(n.getPackageName())), 5000, "target still beneath overlay");
         result.putString("reply", string(reply.getText()).substring(0, Math.min(320, string(reply.getText()).length())));
-        result.putString("screenshot", screenshot("naver-model-guide"));
+        result.putString("screenshot", screenshot(fixture ? "fixture-model-guide" : "naver-model-guide"));
     }
 
     private void search(Bundle result, String target) throws Exception {
-        if (FIXTURE.equals(target)) {
-            Intent intent = new Intent(getTargetContext(), FixtureActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            getTargetContext().startActivity(intent);
-        }
+        if (FIXTURE.equals(target)) launchFixture();
         requireVisible(n -> target.equals(string(n.getPackageName())) &&
             (FIXTURE.equals(target) || string(n.getText()).equals("Search on NAVER Maps") ||
                 string(n.getContentDescription()).equals("Search on NAVER Maps")), 12000, "target home window");
@@ -106,6 +106,12 @@ public final class HyperchatProbe extends Instrumentation {
         result.putString("overlayStatus", string(status.getText()));
         result.putString("resultNode", string(proof.getViewIdResourceName()));
         result.putString("screenshot", screenshot(FIXTURE.equals(target) ? "fixture-search" : "naver-search"));
+    }
+
+    private void launchFixture() {
+        Intent intent = new Intent(getTargetContext(), FixtureActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        getTargetContext().startActivity(intent);
     }
 
     private void openOverlay() {

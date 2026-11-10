@@ -16,6 +16,7 @@ Install `app-debug.apk`, `fixture-debug.apk`, and `fixture-debug-androidTest.apk
 
 ```sh
 adb shell am instrument -w -e mode fixture dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode fixture-guide dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode guide dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode naver-search dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 ```
@@ -31,3 +32,22 @@ The local run used JDK 17, Android SDK 36, and an Android 16 API 36 x86-64 emula
 - **Fixture search.** The overlay reported verified completion and the probe independently found the result in the fixture's own window.
 
 Physical Galaxy and One UI testing remains pending.
+
+## Physical-device model profiling
+
+Build and install the app APK on the selected device, then start Profiler's OnDeviceAI capture for that device. Open Hyperchat, import a compatible `.litertlm` file, and run **온디바이스 모델 진단 실행**. This sends one fixed short question through the same CPU LiteRT-LM engine as overlay guidance and displays the response. For the same question with a GPU request, run **GPU 우선 진단 실행**. You can also ask a screen question from the overlay to capture a `chat` inference. Deterministic `/search` requests do not invoke the model.
+
+For a local readout, look up the app UID and start the scoped stream before the run.
+
+```sh
+adb -s <serial> shell cmd package list packages -U --user current dev.hanzicho.hyperchat
+adb -s <serial> logcat -b main --uid=<uid> -v threadtime HyperchatOnDeviceAI:I '*:S'
+```
+
+The `HyperchatOnDeviceAI` tag carries versioned JSON for import, engine initialization, and inference. Use `operation_id` to pair starts and ends, `request_id` for a generation and its engine initialization, and `engine_id` across requests that reuse the same engine. `t_ms` is device uptime including sleep. `elapsed_ms` measures the operation time. `first_output_ms` measures the delay to the runtime's first nonempty text callback, including conversation setup. The JSON contains no prompt, response, document path, or native error message.
+
+The exact SHA-256 of the pinned Qwen3-0.6B artifact identifies its declared dynamic INT4 block-32 weights, FP32 model activations, and GPU composites with external weights. Unknown model files keep those fields unknown. These are export properties. `explicit_config` identifies the engine's selected backend and `fallback=unobserved` leaves operator-level placement unknown. [Pinned model card](https://huggingface.co/litert-community/Qwen3-0.6B/tree/8768ea43e6d801ee0d353e5036007e6790a2ba05) · [LiteRT-LM Kotlin guide](https://github.com/google-ai-edge/LiteRT-LM/blob/v0.19.1/docs/api/kotlin/getting_started.md)
+
+The GPU diagnostic retries once on CPU after a LiteRT-LM JNI error. The `fallback=app_retry` event uses the same request ID as both attempts and reports CPU as effective only after it returns a response. This is an application retry. Operator placement and an NPU-to-CPU fallback require delegate, runtime, or vendor evidence from the device.
+
+On a TC501 with Android 15 and QCM6690, the pinned model imported successfully and returned a local answer through both the CPU and GPU diagnostics. The `fixture-guide` probe also passed on the physical device by asking through the overlay and checking for the test app's actual `장소 검색` control in the model response. The GPU run completed with the explicit GPU configuration. It did not trigger a retry. Naver Map verification above used the Android emulator.

@@ -5,6 +5,9 @@
     <item type="id" name="hc_status" />
     <item type="id" name="hc_reply" />
     <item type="id" name="hc_import" />
+    <item type="id" name="hc_diagnostic" />
+    <item type="id" name="hc_gpu_diagnostic" />
+    <item type="id" name="hc_diagnostic_status" />
     <item type="id" name="hc_execute" />
     <item type="id" name="hc_stop" />
 </resources>

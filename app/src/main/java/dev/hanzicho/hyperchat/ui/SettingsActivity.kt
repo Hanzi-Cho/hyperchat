@@ -23,7 +23,10 @@ class SettingsActivity : Activity() {
     private val model get() = (application as HyperchatApp).model
     private lateinit var modelLabel: TextView
     private lateinit var importButton: View
-    private var importing = false
+    private lateinit var diagnosticButton: View
+    private lateinit var gpuDiagnosticButton: View
+    private lateinit var diagnosticLabel: TextView
+    private var modelBusy = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,22 +60,41 @@ class SettingsActivity : Activity() {
         }.apply { id = R.id.hc_import }
         add(importButton)
         add(theme.label("파일을 가져오면 기기 안에서 채팅합니다. 검색 명령은 모델이 없어도 사용할 수 있어요.", color = theme.muted))
+        diagnosticButton = theme.button("온디바이스 모델 진단 실행") { runDiagnostic(gpuFirst = false) }.apply {
+            id = R.id.hc_diagnostic
+            isEnabled = model.status().installed
+        }
+        add(diagnosticButton)
+        gpuDiagnosticButton = theme.button("GPU 우선 진단 실행") { runDiagnostic(gpuFirst = true) }.apply {
+            id = R.id.hc_gpu_diagnostic
+            isEnabled = model.status().installed
+        }
+        add(gpuDiagnosticButton)
+        diagnosticLabel = theme.label("Profiler 수집을 시작한 뒤 진단을 실행하세요.", color = theme.muted).apply {
+            id = R.id.hc_diagnostic_status
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        add(diagnosticLabel)
         setContentView(ScrollView(this).apply { addView(column) })
     }
 
     override fun onResume() {
         super.onResume()
-        if (!importing) modelLabel.text = model.status().message
+        if (!modelBusy) {
+            val status = model.status()
+            modelLabel.text = status.message
+            diagnosticButton.isEnabled = status.installed
+            gpuDiagnosticButton.isEnabled = status.installed
+        }
     }
 
     @Deprecated("Handles the system document picker result.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != PICK_MODEL || resultCode != RESULT_OK || importing) return
+        if (requestCode != PICK_MODEL || resultCode != RESULT_OK || modelBusy) return
         val uri = data?.data ?: return
         scope.launch {
-            importing = true
-            importButton.isEnabled = false
+            setModelBusy(true)
             modelLabel.text = "모델 파일을 기기에 복사하는 중…"
             try {
                 model.importModel(uri)
@@ -82,10 +104,35 @@ class SettingsActivity : Activity() {
             } catch (_: Exception) {
                 modelLabel.text = "모델을 가져오지 못했어요. .litertlm 파일과 저장 공간을 확인해 주세요."
             } finally {
-                importing = false
-                importButton.isEnabled = true
+                setModelBusy(false)
             }
         }
+    }
+
+    private fun runDiagnostic(gpuFirst: Boolean) {
+        if (modelBusy || !model.status().installed) return
+        scope.launch {
+            setModelBusy(true)
+            diagnosticLabel.text = if (gpuFirst) "GPU 우선으로 진단하는 중…" else "CPU에서 진단하는 중…"
+            try {
+                val answer = model.runDiagnostic(gpuFirst)
+                diagnosticLabel.text = "온디바이스 진단 완료 · ${answer.take(120)}"
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                diagnosticLabel.text = "온디바이스 진단에 실패했어요. Profiler에서 실행 기록을 확인해 주세요."
+            } finally {
+                setModelBusy(false)
+            }
+        }
+    }
+
+    private fun setModelBusy(busy: Boolean) {
+        modelBusy = busy
+        importButton.isEnabled = !busy
+        val canRun = !busy && model.status().installed
+        diagnosticButton.isEnabled = canRun
+        gpuDiagnosticButton.isEnabled = canRun
     }
 
     override fun onDestroy() {

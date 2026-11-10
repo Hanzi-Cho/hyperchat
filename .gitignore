@@ -1,0 +1,14 @@
+/.gradle/
+/.idea/
+/local.properties
+/**/build/
+/.artifacts/
+*.apk
+*.apks
+*.litertlm
+*.litertlm.*
+*.jks
+*.keystore
+*.log
+.env
+.env.*

@@ -1,0 +1,13 @@
+<resources>
+    <color name="hc_background">#10161D</color>
+    <color name="hc_surface">#19232E</color>
+    <color name="hc_elevated">#223041</color>
+    <color name="hc_outline">#607387</color>
+    <color name="hc_text">#F1F5FB</color>
+    <color name="hc_muted">#B4C2D0</color>
+    <color name="hc_accent">#7BE7CD</color>
+    <color name="hc_on_accent">#092820</color>
+    <color name="hc_success">#97ECC6</color>
+    <color name="hc_warning">#FFCE85</color>
+    <color name="hc_error">#FFAAAA</color>
+</resources>

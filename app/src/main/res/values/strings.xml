@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Hyperchat</string>
+    <string name="accessibility_description">채팅을 열면 지원 앱의 화면을 읽습니다. 검색 입력은 사용자가 실행을 선택했을 때만 보냅니다. 화면 정보는 기기 안에서 처리합니다.</string>
+</resources>

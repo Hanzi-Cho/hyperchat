@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Hyperchat" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/hc_accent</item>
+        <item name="android:windowBackground">@color/hc_background</item>
+        <item name="android:statusBarColor">@color/hc_background</item>
+        <item name="android:navigationBarColor">@color/hc_background</item>
+    </style>
+</resources>

@@ -1,0 +1,19 @@
+{
+  "color": {
+    "background": "#10161D",
+    "surface": "#19232E",
+    "elevated": "#223041",
+    "outline": "#607387",
+    "text": "#F1F5FB",
+    "muted": "#B4C2D0",
+    "accent": "#7BE7CD",
+    "onAccent": "#092820",
+    "success": "#97ECC6",
+    "warning": "#FFCE85",
+    "error": "#FFAAAA"
+  },
+  "spacingDp": [4, 8, 12, 16, 24, 32],
+  "radiusDp": { "overlay": 24, "input": 16, "button": 12 },
+  "typeSp": { "title": 18, "body": 14, "status": 12 },
+  "minTouchTargetDp": 48
+}

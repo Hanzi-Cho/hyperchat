@@ -1,0 +1,10 @@
+<resources>
+    <item type="id" name="hc_open" />
+    <item type="id" name="hc_prompt" />
+    <item type="id" name="hc_send" />
+    <item type="id" name="hc_status" />
+    <item type="id" name="hc_reply" />
+    <item type="id" name="hc_import" />
+    <item type="id" name="hc_execute" />
+    <item type="id" name="hc_stop" />
+</resources>

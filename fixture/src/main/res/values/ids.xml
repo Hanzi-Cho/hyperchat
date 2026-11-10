@@ -1,0 +1,6 @@
+<resources>
+    <item type="id" name="search_entry" />
+    <item type="id" name="search_input" />
+    <item type="id" name="search_submit" />
+    <item type="id" name="search_results" />
+</resources>

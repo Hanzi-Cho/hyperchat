@@ -64,7 +64,7 @@ class ModelManager(context: Context) : AutoCloseable {
                 "If the relevant control is missing, say it is not visible.",
             128,
         ),
-        DIAGNOSTIC("diagnostic", "Answer this diagnostic question directly and briefly.", 16),
+        DIAGNOSTIC("diagnostic", "Generate one brief reply.", 16),
     }
 
     private data class ActiveEngine(val id: String, val runtime: Engine, val backend: LocalBackend)
@@ -126,7 +126,7 @@ class ModelManager(context: Context) : AutoCloseable {
     suspend fun respond(prompt: String): String = respond(prompt, TurnKind.CHAT, LocalBackend.CPU)
 
     suspend fun runDiagnostic(gpuFirst: Boolean = false): String = respond(
-        "What is two plus two? Reply with only the number.",
+        "Say hello in a few words.",
         TurnKind.DIAGNOSTIC,
         if (gpuFirst) LocalBackend.GPU else LocalBackend.CPU,
     )

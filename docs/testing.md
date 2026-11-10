@@ -35,7 +35,7 @@ Physical Galaxy and One UI testing remains pending.
 
 ## Physical-device model profiling
 
-Build and install the app APK on the selected device, then start Profiler's OnDeviceAI capture for that device. Open Hyperchat, import a compatible `.litertlm` file, and run **온디바이스 모델 진단 실행**. This sends one fixed short question through the same CPU LiteRT-LM engine as overlay guidance and displays the response. For the same question with a GPU request, run **GPU 우선 진단 실행**. You can also ask a screen question from the overlay to capture a `chat` inference. Deterministic `/search` requests do not invoke the model.
+Build and install the app APK on the selected device, then start Profiler's OnDeviceAI capture for that device. Open Hyperchat, import a compatible `.litertlm` file, and run **온디바이스 모델 진단 실행**. This sends a short greeting prompt through the same CPU LiteRT-LM engine as overlay guidance and displays the generated response. For the same prompt with a GPU request, run **GPU 우선 진단 실행**. You can also ask a screen question from the overlay to capture a `chat` inference. Deterministic `/search` requests do not invoke the model.
 
 For a local readout, look up the app UID and start the scoped stream before the run.
 

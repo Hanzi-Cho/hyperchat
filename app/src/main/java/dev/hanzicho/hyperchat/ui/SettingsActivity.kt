@@ -116,7 +116,7 @@ class SettingsActivity : Activity() {
             diagnosticLabel.text = if (gpuFirst) "GPU 우선으로 진단하는 중…" else "CPU에서 진단하는 중…"
             try {
                 val answer = model.runDiagnostic(gpuFirst)
-                diagnosticLabel.text = "온디바이스 진단 완료 · ${answer.take(120)}"
+                diagnosticLabel.text = "온디바이스 응답 생성 완료 · ${answer.take(120)}"
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

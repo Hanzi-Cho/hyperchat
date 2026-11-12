@@ -50,6 +50,14 @@ The local run used JDK 17, Android SDK 36, and an Android 16 API 36 x86-64 emula
 
 The system two-finger gesture and physical TC501 Key Programmer and Galaxy / One UI shortcut testing remain pending.
 
+## Natural-language model review
+
+- In Android Settings, `계산기 열어줘` left Settings in the foreground and returned the unsupported-screen message. The current app has no installed-app lookup, app launch or store search path.
+- In the fixture, `홍대 카페 검색해줘` showed a search confirmation and produced an independently verified result after approval. In one Android 16 emulator run, input injection to confirmation was 2.606 s and approval to result was 7.419 s. These UI measurements include test overhead. The command parser and accessibility action handled the search without model inference.
+- The pinned Qwen3-0.6B file is 343,490,560 bytes (327.6 MiB) with block-32 dynamic INT4 weights and FP32 activations. Hyperchat sends up to 10 visible control labels in a guide prompt and generates up to 128 output tokens using LiteRT-LM on CPU. The prompt is text and each turn starts a new conversation. [Qwen model card](https://huggingface.co/Qwen/Qwen3-0.6B) · [LiteRT export notes](https://huggingface.co/litert-community/Qwen3-0.6B)
+- On the Android 16 x86-64 emulator, the first fixture guide initialized the CPU engine in 11.208 s, produced the first runtime text in 30.622 s after inference began, and completed inference in 35.352 s. Total cold runtime was 46.560 s. The next turn reused the same engine and recorded 12.109 s to first runtime text and 20.927 s to completion. Each timing is one sample. The first answer named the visible `장소 검색` button, then incorrectly said it was not visible.
+- A previous TC501 CPU chat sample recorded 4.081 s to the first runtime text callback and 6.131 s to inference completion. The log for that request did not capture engine initialization. The overlay displays the answer when generation finishes.
+
 ## Physical-device model profiling
 
 Build and install the app APK on the selected device, then start Profiler's OnDeviceAI capture for that device. Open Hyperchat, import a compatible `.litertlm` file, and run **온디바이스 모델 진단 실행**. This sends a short greeting prompt through the same CPU LiteRT-LM engine as overlay guidance and displays the generated response. For the same prompt with a GPU request, run **GPU 우선 진단 실행**. You can also ask a screen question from the overlay to capture a `chat` inference. Deterministic `/search` requests do not invoke the model.

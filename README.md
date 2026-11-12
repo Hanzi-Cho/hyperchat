@@ -13,7 +13,7 @@ On an Android test device with Naver Map installed, run the guide and search che
 1. Open the project in Android Studio with JDK 17 and Android SDK 36, sync Gradle, and build a debug APK. For the command line, run `./gradlew :app:assembleDebug` (`.\gradlew.bat :app:assembleDebug` in PowerShell).
 2. Install the debug APK on an Android test device and open Hyperchat. Enable the Hyperchat service in Android's Accessibility settings and install Naver Map separately. Close any Naver Map onboarding or promotional dialogs and return to the map home.
 3. Tap the chat bubble, which starts at the bottom right. Open **+ → 로컬 모델** to import a compatible `.litertlm` file. The optional PowerShell script `./tools/get-model.ps1` fetches the pinned Qwen3-0.6B test model and verifies its size and SHA-256. Ask `Which button should I tap to search for a place?` and press the paper-plane icon.
-4. To run a search, send `/search Seoul Station` and select **검색 실행**. Hyperchat reports whether it verified a new result screen. The search action can run before any model is imported.
+4. To run a place search, send `/search Seoul Station` or `서울역 검색해줘` and select **검색 실행**. Hyperchat reports whether it verified a new result screen. This action can run before any model is imported.
 
 **+** also opens the system gallery or text-file picker. Hyperchat extracts text from selected photos on the device and accepts UTF-8 text files. Ask about the attachment or press Send for a short summary.
 
@@ -50,5 +50,7 @@ For a managed TC501, configure the **PTT** key in StageNow **KeyMappingMgr → R
 | Physical shortcut integration | TC501 Key Programmer and Galaxy / One UI pending |
 
 Hyperchat observes Android accessibility nodes and its own in-memory diagnostic events. Naver Map is unmodified. This prototype uses Android's user-enabled Accessibility Service. Galaxy/One UI hardware and OEM integration have separate verification requirements.
+
+Natural-language app discovery, app launch, and store search are outside the current implementation. Local AI answers questions about visible controls in supported apps. Place search uses a separate command parser and the user approves the action.
 
 [Architecture](docs/architecture.md) · [Design system](docs/design-system.md) · [Testing](docs/testing.md) · [Changelog](docs/CHANGELOG.md)

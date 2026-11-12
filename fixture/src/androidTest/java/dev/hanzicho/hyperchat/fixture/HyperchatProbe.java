@@ -74,6 +74,10 @@ public final class HyperchatProbe extends Instrumentation {
         requireVisible(n -> target.equals(string(n.getPackageName())) &&
             (string(n.getText()).equals(searchLabel) || string(n.getContentDescription()).equals(searchLabel)),
             10000, "target home search control");
+        if (find(n -> id(n, "hc_prompt")) != null) {
+            pressBack();
+            requireIcon("hc_open");
+        }
         openOverlay();
         send(fixture ? "Which button should I tap to search for a place? Quote its Korean label." :
             "Which button should I tap to search for a place?");

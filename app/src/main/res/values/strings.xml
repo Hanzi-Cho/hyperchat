@@ -1,4 +1,28 @@
 <resources>
+    <string name="composer_hint">메시지 입력</string>
+    <string name="composer_send">보내기</string>
+    <string name="composer_attach">첨부 메뉴 열기</string>
+    <string name="composer_close_menu">첨부 메뉴 닫기</string>
+    <string name="composer_gallery">갤러리</string>
+    <string name="composer_text_file">텍스트 파일</string>
+    <string name="composer_model">로컬 모델</string>
+    <string name="composer_remove_attachment">첨부 제거</string>
     <string name="app_name">Hyperchat</string>
     <string name="accessibility_description">채팅을 열면 지원 앱의 화면을 읽습니다. 검색 입력은 사용자가 실행을 선택했을 때만 보냅니다. 화면 정보는 기기 안에서 처리합니다.</string>
+    <string name="shortcut_mapping_title">동작 매핑</string>
+    <string name="shortcut_mapping_value">%1$s · %2$s</string>
+    <string name="shortcut_mapping_help">작은 Hyperchat 버튼을 길게 누른 채 끌면 이동합니다. 위로 스와이프는 버튼 위에서 시작하세요.\nAndroid 접근성 설정에서 Hyperchat 바로가기를 지정할 수 있습니다. Zebra Key Programmer에 ‘Hyperchat 바로가기’를 지정해도 시스템 바로가기 동작이 적용됩니다.</string>
+    <string name="shortcut_trigger_tap">탭</string>
+    <string name="shortcut_trigger_swipe_up">버튼에서 위로 스와이프</string>
+    <string name="shortcut_trigger_system">시스템 바로가기</string>
+    <string name="shortcut_action_chat">채팅 열기</string>
+    <string name="shortcut_action_settings">Hyperchat 설정 열기</string>
+    <string name="shortcut_action_none">사용 안 함</string>
+    <string name="shortcut_launcher_label">Hyperchat 바로가기</string>
+    <string name="shortcut_requires_service">Hyperchat 설정에서 접근성 서비스를 먼저 켜 주세요.</string>
+    <string name="bubble_open">Hyperchat 바로가기</string>
+    <string name="bubble_stop">Hyperchat 실행 중지</string>
+    <string name="bubble_delete">삭제하기</string>
+    <string name="bubble_cancel_delete">버블 삭제 취소</string>
+    <string name="bubble_restore">채팅 버블 다시 표시</string>
 </resources>

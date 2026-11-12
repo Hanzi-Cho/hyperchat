@@ -2,6 +2,13 @@
     <item type="id" name="hc_open" />
     <item type="id" name="hc_prompt" />
     <item type="id" name="hc_send" />
+    <item type="id" name="hc_menu" />
+    <item type="id" name="hc_menu_options" />
+    <item type="id" name="hc_gallery" />
+    <item type="id" name="hc_text_file" />
+    <item type="id" name="hc_model" />
+    <item type="id" name="hc_attachment" />
+    <item type="id" name="hc_remove_attachment" />
     <item type="id" name="hc_status" />
     <item type="id" name="hc_reply" />
     <item type="id" name="hc_import" />
@@ -10,4 +17,6 @@
     <item type="id" name="hc_diagnostic_status" />
     <item type="id" name="hc_execute" />
     <item type="id" name="hc_stop" />
+    <item type="id" name="hc_delete_overlay" />
+    <item type="id" name="hc_delete_button" />
 </resources>

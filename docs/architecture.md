@@ -27,6 +27,20 @@ flowchart LR
 | Verification | Require query evidence from a result surface or explicit result summary. A typed query, autocomplete, or accepted gesture does not prove success. Missing evidence remains unverified. |
 | Diagnostics | Record only coarse Hyperchat events such as an unsupported target, cancelled action, timeout, or verified result. Keep queries, raw node trees, screenshots, credentials, and imported model paths out of logs. Do not use another app's process logs as evidence. |
 
+## Shortcut routing
+
+The collapsed accessibility overlay handles taps and upward swipes that start on its 48 dp chat bubble. A long press followed by a drag saves the bubble's position. The accessibility-button callback, launcher shortcut and managed-device intent use the same system shortcut mapping. Each mapping opens chat, opens Hyperchat settings, or stays disabled according to the saved preference.
+
+A stationary hold adds a focusable delete overlay while the bubble keeps the initial touch stream. Starting a drag dismisses the delete overlay and moves the bubble. The delete action saves a visibility preference, which the service applies when it reconnects. Settings can restore the bubble independently of the configured shortcut action.
+
+`ShortcutActivity` accepts the explicit `dev.hanzicho.hyperchat.action.OPEN_SHORTCUT` action on an unlocked device and passes it to the connected accessibility service. Search still requires a separate confirmation in the composer. [Shortcut setup](../README.md#open-hyperchat-with-a-shortcut)
+
+## Attachments
+
+The composer registers gallery, UTF-8 text and local model settings in `ComposerAction`. The non-exported picker activity returns one selected attachment to the current overlay draft. Gallery photos use bundled on-device text recognition. The prompt receives only a bounded text excerpt and treats it as data. The attachment path cannot dispatch a search action. Replacing or removing the attachment clears it from the draft.
+
+Add another picker or capability through the same action list. A vision-model action would need an image-capable model path. An MCP connector would need a separate connection and tool-approval flow before it can run actions.
+
 ## Search scenario
 
 1. The user enables the service, opens Naver Map, submits `/search Seoul Station` through the overlay, and selects `검색 실행`.

@@ -10,4 +10,5 @@
     <color name="hc_success">#97ECC6</color>
     <color name="hc_warning">#FFCE85</color>
     <color name="hc_error">#FFAAAA</color>
+    <color name="hc_scrim">#99000000</color>
 </resources>

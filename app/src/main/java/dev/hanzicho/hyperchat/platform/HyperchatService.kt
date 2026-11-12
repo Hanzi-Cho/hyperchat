@@ -1,7 +1,9 @@
 package dev.hanzicho.hyperchat.platform
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityButtonController
 import android.accessibilityservice.InputMethod
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -9,7 +11,9 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.EditorInfo
+import dev.hanzicho.hyperchat.HyperchatApp
 import dev.hanzicho.hyperchat.ui.OverlayController
+import dev.hanzicho.hyperchat.ui.ShortcutTrigger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -22,6 +26,12 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
     private var overlay: OverlayController? = null
     private var running: SearchRun? = null
     private val events = ArrayDeque<String>(EVENT_LIMIT)
+    private var shortcutController: AccessibilityButtonController? = null
+    private val openFromShortcut: () -> Unit = { overlay?.runShortcut(ShortcutTrigger.SYSTEM) }
+    private val showFloatingBubble: () -> Unit = { overlay?.restoreLauncher() }
+    private val shortcutCallback = object : AccessibilityButtonController.AccessibilityButtonCallback() {
+        override fun onClicked(controller: AccessibilityButtonController) = openFromShortcut()
+    }
 
     @android.annotation.TargetApi(33)
     override fun onCreateInputMethod(): InputMethod = object : InputMethod(this) {
@@ -35,11 +45,29 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
         record("LIFECYCLE", "서비스 연결")
         overlay?.close()
         overlay = OverlayController(this, this).also { it.showLauncher() }
+        shortcutController?.unregisterAccessibilityButtonCallback(shortcutCallback)
+        shortcutController = accessibilityButtonController.also {
+            it.registerAccessibilityButtonCallback(shortcutCallback)
+        }
+        (application as HyperchatApp).apply {
+            systemShortcut = openFromShortcut
+            restoreBubble = showFloatingBubble
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        overlay?.onDisplayChanged()
     }
 
     override fun onDestroy() {
         connected = false
         running?.interrupted = true
+        shortcutController?.unregisterAccessibilityButtonCallback(shortcutCallback)
+        shortcutController = null
+        val app = application as HyperchatApp
+        if (app.systemShortcut === openFromShortcut) app.systemShortcut = null
+        if (app.restoreBubble === showFloatingBubble) app.restoreBubble = null
         overlay?.close()
         overlay = null
         super.onDestroy()

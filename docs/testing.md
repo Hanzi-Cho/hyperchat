@@ -17,11 +17,25 @@ Install `app-debug.apk`, `fixture-debug.apk`, and `fixture-debug-androidTest.apk
 ```sh
 adb shell am instrument -w -e mode fixture dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode fixture-guide dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode composer dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode bubble dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode bubble-delete dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode model-review dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode guide dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode naver-search dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 ```
 
 Run the probes serially on a single device. In a multi-device setup, use `adb -s <serial>`. Check for `outcome=PASS` and `INSTRUMENTATION_CODE: -1`. The Naver Map search probe separately reports the overlay status and asserts the query and result container in Naver Map. The probe runs with `FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES` so Android leaves Hyperchat enabled during assertions. It saves screenshots under the fixture's external files directory. Keep screenshots and diagnostics local if they contain third-party UI or user data.
+
+The composer probe expects a fresh overlay and checks its idle row, horizontal menu layout and draft retention. For the text attachment probe, copy a non-empty UTF-8 `.txt` to the test device and make it visible in the system document picker's initial folder. Run `adb shell am instrument -w -e mode text-attachment -e file hyperchat-probe.txt dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe` with its actual name. To check gallery OCR, select a test photo containing readable text and ask the local model about that text.
+
+The bubble probe uses the default **채팅 열기** mappings for tap and upward swipe. It checks the collapsed size, long-press drag, tap to open, Back to minimize at the moved position, and swipe to reopen with the same draft. For the launcher or managed key entry point, run the command below while another app is visible, the service is enabled, and **시스템 바로가기** is set to **채팅 열기**. Verify the chat opens above that app.
+
+```sh
+adb shell am start -a dev.hanzicho.hyperchat.action.OPEN_SHORTCUT -n dev.hanzicho.hyperchat/.ui.ShortcutActivity
+```
+
+The delete probe uses the default system shortcut mapping and checks the stationary long press, top delete action, outside-tap cancellation at the original position, hidden state, and restoration via the explicit shortcut. The model-review probe checks the response to a natural-language app launch request outside supported apps and the confirmed natural-language place search in the fixture. It records UI timings for the place search path.
 
 ## Recorded environment
 
@@ -30,8 +44,11 @@ The local run used JDK 17, Android SDK 36, and an Android 16 API 36 x86-64 emula
 - **Guide.** The pinned Qwen3-0.6B CPU model returned the `Search on NAVER Maps` control, independently observed in the original app window.
 - **Naver Map search.** `/search Seoul Station` opened the Naver Map result screen. The probe found the committed query and Naver Map result container after approval. Hyperchat timed out on its own result check and displayed `검색어 제출 완료 · 결과 확인 필요`.
 - **Fixture search.** The overlay reported verified completion and the probe independently found the result in the fixture's own window.
+- **Composer and attachments.** The Android 16 run checked the idle row, horizontal menu, draft retention and attachment removal. The system photo picker returned a test image, and the imported Qwen3-0.6B model answered with `ORBIT LANTERN` from its OCR text.
+- **Floating bubble and mappings.** The Android 16 probe verified drag, tap, Back, upward swipe, and draft retention. The system accessibility button and explicit app shortcut both opened the overlay above the fixture. Changing the system mapping in Hyperchat settings was verified for all three actions.
+- **Bubble deletion.** On the same emulator, the probe verified the top delete action, outside-tap cancellation, hiding the bubble, and restoration via the explicit app shortcut.
 
-Physical Galaxy and One UI testing remains pending.
+The system two-finger gesture and physical TC501 Key Programmer and Galaxy / One UI shortcut testing remain pending.
 
 ## Physical-device model profiling
 

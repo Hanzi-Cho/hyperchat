@@ -1,11 +1,13 @@
 package dev.hanzicho.hyperchat.ui
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -21,6 +23,7 @@ import kotlinx.coroutines.launch
 class SettingsActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val model get() = (application as HyperchatApp).model
+    private val shortcuts by lazy { ShortcutPreferences(this) }
     private lateinit var modelLabel: TextView
     private lateinit var importButton: View
     private lateinit var diagnosticButton: View
@@ -44,7 +47,7 @@ class SettingsActivity : Activity() {
         add(theme.label("앱 위에서 바로 도움받기", 27f, bold = true))
         add(theme.label("네이버지도 화면을 보면서 사용법을 묻거나 장소를 검색할 수 있어요.", color = theme.muted))
         add(theme.label("1  오버레이 사용", 18f, bold = true), 32)
-        add(theme.label("접근성 설정에서 Hyperchat을 켜고, 네이버지도를 열어 오른쪽 아래 버튼을 누르세요.", color = theme.muted))
+        add(theme.label("접근성 설정에서 Hyperchat을 켠 다음, 네이버지도 위에 표시되는 Hyperchat 버튼을 사용하세요.", color = theme.muted))
         add(theme.button("접근성 설정 열기", primary = true) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
@@ -75,8 +78,47 @@ class SettingsActivity : Activity() {
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         add(diagnosticLabel)
+        add(theme.label(getString(R.string.shortcut_mapping_title), 18f, bold = true), 32)
+        add(shortcutButton(theme, ShortcutTrigger.TAP, R.string.shortcut_trigger_tap))
+        add(shortcutButton(theme, ShortcutTrigger.SWIPE_UP, R.string.shortcut_trigger_swipe_up))
+        add(shortcutButton(theme, ShortcutTrigger.SYSTEM, R.string.shortcut_trigger_system))
+        add(theme.button(getString(R.string.bubble_restore)) {
+            shortcuts.isBubbleHidden = false
+            (application as HyperchatApp).restoreBubble?.invoke()
+        })
+        add(theme.label(getString(R.string.shortcut_mapping_help), color = theme.muted))
         setContentView(ScrollView(this).apply { addView(column) })
     }
+
+    private fun shortcutButton(theme: Theme, trigger: ShortcutTrigger, title: Int): View {
+        val triggerLabel = getString(title)
+        val actions = ShortcutAction.entries
+        val actionLabels = actions.map(::shortcutActionLabel).toTypedArray()
+        fun buttonLabel(action: ShortcutAction) =
+            getString(R.string.shortcut_mapping_value, triggerLabel, shortcutActionLabel(action))
+
+        lateinit var button: Button
+        button = theme.button(buttonLabel(shortcuts.action(trigger))) {
+            val selected = actions.indexOf(shortcuts.action(trigger))
+            AlertDialog.Builder(this)
+                .setTitle(triggerLabel)
+                .setSingleChoiceItems(actionLabels, selected) { dialog, index ->
+                    val action = actions[index]
+                    shortcuts.setAction(trigger, action)
+                    button.text = buttonLabel(action)
+                    dialog.dismiss()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+        return button
+    }
+
+    private fun shortcutActionLabel(action: ShortcutAction): String = getString(when (action) {
+        ShortcutAction.OPEN_CHAT -> R.string.shortcut_action_chat
+        ShortcutAction.OPEN_SETTINGS -> R.string.shortcut_action_settings
+        ShortcutAction.NONE -> R.string.shortcut_action_none
+    })
 
     override fun onResume() {
         super.onResume()

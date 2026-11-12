@@ -29,3 +29,13 @@ fun guidePrompt(question: String, snapshot: ScreenSnapshot): String {
     }.take(1200 - header.length - tail.length)
     return header + context + tail
 }
+
+internal fun attachmentPrompt(question: String, text: String, sourceTruncated: Boolean): String {
+    val safeQuestion = question.filterNot { it.isISOControl() }.take(500)
+    val safeText = text.map { if (it.isISOControl()) ' ' else it }.joinToString("").trim()
+    val head = "Question: $safeQuestion\nAttached text:\n"
+    val end = "\nEnd of attached text."
+    val partial = "\nAttachment excerpt only."
+    val budget = 1200 - head.length - end.length - partial.length
+    return head + safeText.take(budget) + end + if (sourceTruncated || safeText.length > budget) partial else ""
+}

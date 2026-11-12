@@ -6,6 +6,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import dev.hanzicho.hyperchat.R
 
@@ -36,6 +38,24 @@ internal class Theme(private val context: Context) {
             textSize = size
             setTextColor(color)
             if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }
+
+    fun iconButton(icon: Int, label: CharSequence, primary: Boolean = false, click: () -> Unit) =
+        ImageButton(context).apply {
+            setImageResource(icon)
+            contentDescription = label
+            scaleType = ImageView.ScaleType.CENTER
+            imageTintList = ColorStateList.valueOf(if (primary) onAccent else text)
+            minimumWidth = dp(48)
+            minimumHeight = dp(48)
+            setPadding(0, 0, 0, 0)
+            stateListAnimator = null
+            background = RippleDrawable(
+                ColorStateList.valueOf(if (primary) 0x24000000 else 0x26FFFFFF),
+                round(if (primary) accent else elevated, 24),
+                null,
+            )
+            setOnClickListener { click() }
         }
 
     fun button(value: String, primary: Boolean = false, click: () -> Unit) =

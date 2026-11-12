@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_hyperchat"
+        android:icon="@drawable/hc_ic_chat"
+        android:shortcutShortLabel="@string/shortcut_launcher_label">
+        <intent
+            android:action="dev.hanzicho.hyperchat.action.OPEN_SHORTCUT"
+            android:targetClass="dev.hanzicho.hyperchat.ui.ShortcutActivity"
+            android:targetPackage="dev.hanzicho.hyperchat" />
+    </shortcut>
+</shortcuts>

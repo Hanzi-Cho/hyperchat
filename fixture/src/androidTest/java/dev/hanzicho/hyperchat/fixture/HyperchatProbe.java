@@ -19,6 +19,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -49,6 +50,10 @@ public final class HyperchatProbe extends Instrumentation {
                 case "dump": result.putString("stream", dump()); break;
                 case "guide": guide(result, MAP); break;
                 case "fixture-guide": guide(result, FIXTURE); break;
+                case "generic-guide": genericGuide(result); break;
+                case "generic-action": genericAction(result); break;
+                case "generic-plan": genericPlan(result); break;
+                case "generic-settings": genericSettings(result); break;
                 case "model-review": modelReview(result); break;
                 case "naver-search": search(result, MAP); break;
                 case "fixture": search(result, FIXTURE); break;
@@ -70,7 +75,20 @@ public final class HyperchatProbe extends Instrumentation {
     private void guide(Bundle result, String target) throws Exception {
         boolean fixture = FIXTURE.equals(target);
         if (fixture) launchFixture();
-        String searchLabel = fixture ? "장소 검색" : "Search on NAVER Maps";
+        answerGuide(result, target, fixture ? "장소 검색" : "Search on NAVER Maps",
+            fixture ? "Which button should I tap to search for a place? Quote its Korean label." :
+                "Which button should I tap to search for a place?",
+            fixture ? "fixture-model-guide" : "naver-model-guide");
+    }
+
+    private void genericGuide(Bundle result) throws Exception {
+        launchCatalog();
+        answerGuide(result, FIXTURE, "도서 검색",
+            "책을 찾으려면 어떤 버튼을 눌러야 해? 버튼 이름을 화면에 나온 그대로 알려줘.", "catalog-model-guide");
+    }
+
+    private void answerGuide(Bundle result, String target, String searchLabel, String question, String screenshotName)
+            throws Exception {
         requireVisible(n -> target.equals(string(n.getPackageName())) &&
             (string(n.getText()).equals(searchLabel) || string(n.getContentDescription()).equals(searchLabel)),
             10000, "target home search control");
@@ -79,8 +97,7 @@ public final class HyperchatProbe extends Instrumentation {
             requireIcon("hc_open");
         }
         openOverlay();
-        send(fixture ? "Which button should I tap to search for a place? Quote its Korean label." :
-            "Which button should I tap to search for a place?");
+        send(question);
         requireVisible(n -> id(n, "hc_status") && string(n.getText()).startsWith("온디바이스 응답 완료"),
             95000, "real on-device response");
         AccessibilityNodeInfo reply = requireVisible(n -> {
@@ -90,7 +107,98 @@ public final class HyperchatProbe extends Instrumentation {
         }, 4000, "reply citing the actual target control");
         requireVisible(n -> target.equals(string(n.getPackageName())), 5000, "target still beneath overlay");
         result.putString("reply", string(reply.getText()).substring(0, Math.min(320, string(reply.getText()).length())));
-        result.putString("screenshot", screenshot(fixture ? "fixture-model-guide" : "naver-model-guide"));
+        result.putString("screenshot", screenshot(screenshotName));
+    }
+
+    private void genericAction(Bundle result) throws Exception {
+        runCatalogSearch(result, "first", "달빛 정원");
+        if (Boolean.parseBoolean(args.getString("repeat", "false"))) {
+            runCatalogSearch(result, "repeat", "별빛 도서관");
+            requireVisible(n -> id(n, "hc_reply") && string(n.getText()).contains("저장된 검색 경로를 재사용했어요."),
+                5000, "saved search path reused with the new query");
+        }
+        result.putString("screenshot", screenshot("catalog-search-and-open"));
+    }
+
+    private void genericSettings(Bundle result) throws Exception {
+        String settingsPackage = "com.android.settings";
+        String display = args.getString("label", "Display & touch");
+        Intent settings = new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
+            Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        if (find(n -> id(n, "hc_prompt")) != null) {
+            pressBack();
+            requireIcon("hc_open");
+        }
+        getTargetContext().startActivity(settings);
+        requireVisible(n -> settingsPackage.equals(string(n.getPackageName())) && display.equals(string(n.getText())),
+            15000, "Display row in the real Android Settings app");
+        openOverlay();
+        if ("true".equals(args.getString("guide"))) {
+            send("Which visible setting opens display options? Quote its exact title.");
+            requireVisible(n -> id(n, "hc_status") && string(n.getText()).startsWith("온디바이스 응답 완료"),
+                95000, "on-device response over real Android Settings");
+            AccessibilityNodeInfo answer = requireVisible(n -> id(n, "hc_reply") &&
+                string(n.getText()).contains(display), 5000, "local model names the real display entry");
+            result.putString("reply", string(answer.getText()));
+            result.putString("screenshot", screenshot("android-settings-model-guide"));
+            return;
+        }
+        send("Open " + display);
+        click(requireVisible(n -> id(n, "hc_execute") && n.isEnabled(), 6000, "explicit navigation approval"));
+        AccessibilityNodeInfo destination = requireVisible(n -> {
+            if (!settingsPackage.equals(string(n.getPackageName()))) return false;
+            String label = string(n.getText());
+            return label.equals("Display size and text") || label.equals("Brightness level") ||
+                label.equals("Adaptive brightness");
+        }, 12000, "real Android Display settings control");
+        result.putString("destinationProof", string(destination.getText()));
+        result.putString("screenshot", screenshot("android-settings-display"));
+    }
+
+    private void genericPlan(Bundle result) throws Exception {
+        openCatalogComposer();
+        String prompt = args.getString("prompt", "도서 검색 버튼으로 이동해 줘");
+        long requested = SystemClock.elapsedRealtime();
+        send(prompt);
+        AccessibilityNodeInfo execute = requireVisible(n -> id(n, "hc_execute") && n.isEnabled(),
+            95000, "explicit approval for the proposed catalog action");
+        AccessibilityNodeInfo preview = requireVisible(n -> id(n, "hc_status") &&
+            string(n.getText()).contains("‘도서 검색’ 열기"), 5000, "preview names the exact catalog action");
+        requireCatalogEntry();
+        Predicate<AccessibilityNodeInfo> titleField = n -> n.isEditable() &&
+            (FIXTURE + ":id/catalog_title_field").equals(string(n.getViewIdResourceName()));
+        if (find(titleField) != null) throw new AssertionError("Catalog search opened before approval");
+        long approved = SystemClock.elapsedRealtime();
+        click(execute);
+        AccessibilityNodeInfo destination = requireVisible(titleField, 12000, "independent catalog search screen");
+        result.putString("planApprovalMs", Long.toString(approved - requested));
+        result.putString("planPreview", string(preview.getText()));
+        result.putString("destinationProof", string(destination.getViewIdResourceName()));
+        result.putString("screenshot", screenshot("catalog-model-plan"));
+    }
+
+    private void runCatalogSearch(Bundle result, String run, String query) throws Exception {
+        openCatalogComposer();
+        long requested = SystemClock.elapsedRealtime();
+        send(query + " 검색하고 첫 번째 결과 열어줘");
+        AccessibilityNodeInfo execute = requireVisible(n -> id(n, "hc_execute") && n.isEnabled(),
+            6000, "explicit approval for search and open");
+        if (find(n -> (FIXTURE + ":id/catalog_detail").equals(string(n.getViewIdResourceName()))) != null) {
+            throw new AssertionError("Catalog detail was opened before approval");
+        }
+        long approved = SystemClock.elapsedRealtime();
+        click(execute);
+        AccessibilityNodeInfo detail = requireVisible(n ->
+            (FIXTURE + ":id/catalog_detail").equals(string(n.getViewIdResourceName())) &&
+            ("도서 상세: " + query).equals(string(n.getText())), 45000, "independent catalog detail after opening first result");
+        long opened = SystemClock.elapsedRealtime();
+        requireVisible(n -> (FIXTURE + ":id/catalog_detail_query").equals(string(n.getViewIdResourceName())) &&
+            ("검색어: " + query).equals(string(n.getText())), 5000, "exact query submitted to the catalog");
+        requireVisible(n -> id(n, "hc_status") && "요청한 결과 화면을 열었습니다.".equals(string(n.getText())),
+            5000, "verified search-and-open status");
+        result.putString(run + "CatalogDetail", string(detail.getText()));
+        result.putString(run + "ConfirmationMs", Long.toString(approved - requested));
+        result.putString(run + "ApprovedToDetailMs", Long.toString(opened - approved));
     }
 
     private void search(Bundle result, String target) throws Exception {
@@ -141,9 +249,10 @@ public final class HyperchatProbe extends Instrumentation {
         getTargetContext().startActivity(settings);
         requireVisible(n -> settingsPackage.equals(string(n.getPackageName())), 10000, "Android Settings foreground");
         openOverlay();
-        send("계산기 열어줘");
+        send("계산기 앱 열어줘");
         AccessibilityNodeInfo unsupported = requireVisible(n -> id(n, "hc_status") &&
-            "네이버지도 화면을 연 뒤 다시 보내 주세요.".equals(string(n.getText())), 5000, "unsupported app-open request");
+            "현재 화면 안에서만 조작할 수 있어요. 먼저 대상 앱을 열어 주세요.".equals(string(n.getText())),
+            5000, "unsupported app-open request");
         requireVisible(n -> settingsPackage.equals(string(n.getPackageName())), 5000, "Android Settings stays open");
         requireHidden("hc_reply", "hc_execute");
         result.putString("appOpenStatus", string(unsupported.getText()));
@@ -158,25 +267,39 @@ public final class HyperchatProbe extends Instrumentation {
         getTargetContext().startActivity(intent);
     }
 
+    private void launchCatalog() {
+        Intent intent = new Intent(getTargetContext(), CatalogActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        getTargetContext().startActivity(intent);
+    }
+
+    private void openCatalogComposer() throws Exception {
+        if (find(n -> id(n, "hc_prompt")) != null) {
+            pressBack();
+            requireIcon("hc_open");
+        }
+        launchCatalog();
+        requireCatalogEntry();
+        openOverlay();
+    }
+
+    private void requireCatalogEntry() {
+        requireVisible(n -> (FIXTURE + ":id/catalog_entry").equals(string(n.getViewIdResourceName())) &&
+            n.isClickable() && "도서 검색".equals(string(n.getText())), 10000, "catalog home search control");
+    }
+
     private void composer(Bundle result) throws Exception {
         AccessibilityNodeInfo menu = openCleanFixtureComposer();
         result.putString("idleScreenshot", screenshot("composer-idle"));
 
         String closedLabel = string(menu.getContentDescription());
         click(menu);
-        Rect gallery = bounds(requireIcon("hc_gallery"));
-        Rect text = bounds(requireIcon("hc_text_file"));
-        Rect model = bounds(requireIcon("hc_model"));
-        Rect prompt = bounds(requireVisible(n -> id(n, "hc_prompt"), 3000, "prompt beneath menu"));
-        if (gallery.isEmpty() || text.isEmpty() || model.isEmpty() ||
-            gallery.centerY() != text.centerY() || text.centerY() != model.centerY() ||
-            gallery.right > text.left || text.right > model.left ||
-            Math.max(gallery.bottom, Math.max(text.bottom, model.bottom)) > prompt.top) {
-            throw new AssertionError("Menu icons must share one horizontal row above the prompt: " +
-                gallery + " " + text + " " + model + " prompt=" + prompt);
-        }
         requireVisible(n -> id(n, "hc_menu") &&
             !string(n.getContentDescription()).equals(closedLabel), 3000, "expanded menu accessibility label");
+        requireIcon("hc_gallery");
+        requireIcon("hc_text_file");
+        requireIcon("hc_model");
+        requireStableComposerRow();
         result.putString("expandedScreenshot", screenshot("composer-expanded"));
 
         String draft = "Hyperchat composer test draft";
@@ -193,6 +316,32 @@ public final class HyperchatProbe extends Instrumentation {
         requireVisible(n -> id(n, "hc_menu") && string(n.getContentDescription()).equals(closedLabel), 3000, "menu closed after draft check");
         setDraft("");
         requireVisible(n -> id(n, "hc_send") && !n.isEnabled(), 3000, "send disabled again after clearing draft");
+    }
+
+    private void requireStableComposerRow() {
+        String[] ids = {"hc_gallery", "hc_text_file", "hc_model", "hc_prompt"};
+        long end = SystemClock.elapsedRealtime() + 4000;
+        Rect[] previous = null;
+        do {
+            Rect[] current = new Rect[ids.length];
+            for (int i = 0; i < ids.length; i++) {
+                String name = ids[i];
+                AccessibilityNodeInfo node = find(n -> id(n, name));
+                current[i] = node == null ? new Rect() : bounds(node);
+            }
+            Rect gallery = current[0];
+            Rect text = current[1];
+            Rect model = current[2];
+            Rect prompt = current[3];
+            if (Arrays.equals(previous, current) && !gallery.isEmpty() && !text.isEmpty() && !model.isEmpty() &&
+                !prompt.isEmpty() && gallery.centerY() == text.centerY() && text.centerY() == model.centerY() &&
+                gallery.right <= text.left && text.right <= model.left &&
+                Math.max(gallery.bottom, Math.max(text.bottom, model.bottom)) <= prompt.top) return;
+            previous = current;
+            SystemClock.sleep(120);
+        } while (SystemClock.elapsedRealtime() < end);
+        throw new AssertionError("Menu icons must share one stable horizontal row above the prompt: " +
+            Arrays.toString(previous));
     }
 
     private void bubble(Bundle result) throws Exception {
@@ -358,7 +507,11 @@ public final class HyperchatProbe extends Instrumentation {
         requireHidden("hc_attachment");
     }
 
-    private AccessibilityNodeInfo openCleanFixtureComposer() {
+    private AccessibilityNodeInfo openCleanFixtureComposer() throws Exception {
+        if (find(n -> id(n, "hc_prompt")) != null) {
+            pressBack();
+            requireIcon("hc_open");
+        }
         launchFixture();
         requireVisible(n -> FIXTURE.equals(string(n.getPackageName())) && "장소 검색".equals(string(n.getText())),
             10000, "fixture home screen");

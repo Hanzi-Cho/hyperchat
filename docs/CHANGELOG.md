@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Generalized screen guidance and approved UI actions to the foreground app. Added exact-result opening, focused text entry, and bounded in-app navigation.
+- Added a private search path cache that revalidates stable control IDs and supplies the current query at execution time.
 - Added a movable 48 dp chat bubble with saved position, tap, and upward swipe.
 - Added a stationary long-press delete action with a dimmed backdrop, outside-tap cancellation, and a persistent hide preference. Settings and the chat shortcut can restore the bubble.
 - Added configurable actions for tap, swipe, and the system shortcut. The Android accessibility shortcut, launcher shortcut, and managed-device intent use the system shortcut action.

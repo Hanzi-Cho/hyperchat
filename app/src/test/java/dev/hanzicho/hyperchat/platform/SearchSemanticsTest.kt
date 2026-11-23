@@ -7,6 +7,29 @@ import org.junit.Test
 
 class SearchSemanticsTest {
     @Test
+    fun genericSearchDistinguishesSearchFromUnrelatedAndMutatingControls() {
+        val research = node(text = "Research", clickable = true)
+        val save = node(text = "Save search", clickable = true)
+        val search = node(text = "도서 검색", clickable = true)
+        assertNull(ForegroundSemantics.searchEntry(listOf(research, save)))
+        assertEquals(2, ForegroundSemantics.searchEntry(listOf(research, save, search)))
+        assertNull(ForegroundSemantics.searchEntry(listOf(search, search)))
+    }
+
+    @Test
+    fun genericResultRequiresEvidenceBeyondTheInputOrAutocomplete() {
+        val field = node(id = "search_input", text = "달빛 정원", editable = true)
+        val suggestionList = node(id = "search_suggestions")
+        val suggestion = node(text = "달빛 정원", clickable = true, parent = 1)
+        val result = node(text = "달빛 정원", clickable = true)
+
+        assertNull(ForegroundSemantics.resultSignature(listOf(field, suggestionList, suggestion), "달빛 정원"))
+        assertNull(ForegroundSemantics.resultSignature(listOf(field, result), "달빛 정원"))
+        assertNotNull(ForegroundSemantics.resultSignature(listOf(result), "달빛 정원"))
+        assertNull(ForegroundSemantics.resultTarget(listOf(result, result), "달빛 정원"))
+    }
+
+    @Test
     fun duplicateSearchTargetsAreRejected() {
         val nodes = listOf(
             node(text = "검색", clickable = true),

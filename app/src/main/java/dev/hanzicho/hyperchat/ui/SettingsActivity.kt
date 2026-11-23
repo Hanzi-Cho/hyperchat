@@ -45,9 +45,9 @@ class SettingsActivity : Activity() {
                 .apply { topMargin = theme.dp(top) })
         add(theme.label("HYPERCHAT", 12f, theme.accent, true), 0)
         add(theme.label("앱 위에서 바로 도움받기", 27f, bold = true))
-        add(theme.label("네이버지도 화면을 보면서 사용법을 묻거나 장소를 검색할 수 있어요.", color = theme.muted))
+        add(theme.label(getString(R.string.settings_overlay_intro), color = theme.muted))
         add(theme.label("1  오버레이 사용", 18f, bold = true), 32)
-        add(theme.label("접근성 설정에서 Hyperchat을 켠 다음, 네이버지도 위에 표시되는 Hyperchat 버튼을 사용하세요.", color = theme.muted))
+        add(theme.label(getString(R.string.settings_overlay_help), color = theme.muted))
         add(theme.button("접근성 설정 열기", primary = true) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })

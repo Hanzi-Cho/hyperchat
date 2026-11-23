@@ -1,8 +1,10 @@
 package dev.hanzicho.hyperchat.platform
 
+import dev.hanzicho.hyperchat.core.ScreenCommand
+
 interface ScreenBridge {
     fun capture(): ScreenSnapshot?
-    suspend fun search(query: String, expected: ScreenSnapshot): SearchResult
+    suspend fun execute(command: ScreenCommand, expected: ScreenSnapshot): SearchResult
 }
 
 data class ScreenSnapshot(
@@ -18,8 +20,9 @@ data class ScreenNode(
     val viewId: String,
     val clickable: Boolean,
     val editable: Boolean,
+    val focused: Boolean = false,
 )
 
 enum class SearchOutcome { STOPPED, SUBMITTED, VERIFIED }
 
-data class SearchResult(val outcome: SearchOutcome, val message: String)
+data class SearchResult(val outcome: SearchOutcome, val message: String, val cacheHit: Boolean = false)

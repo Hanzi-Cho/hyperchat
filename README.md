@@ -1,19 +1,19 @@
 # Hyperchat
 
-Hyperchat brings local AI guidance and place search to Naver Map through an Android chat overlay. Enable the accessibility service, open Naver Map, and tap the floating Hyperchat icon. A legacy app can expose a useful screen flow even when you have no integration API. Hyperchat reads visible controls for local guidance and uses a separate, explicitly approved search action.
+Hyperchat is an Android chat overlay for the app you already have open. It answers screen questions with an imported local model and can search, enter text, and navigate through controls exposed to Android Accessibility. You review each proposed operation before it runs.
 
 ```text
 Clone https://github.com/Hanzi-Cho/hyperchat and read the Android build files and README.
 Install the declared JDK/Android SDK dependencies, build the debug APK, and find the app and accessibility-service entry points.
-On an Android test device with Naver Map installed, run the guide and search checks in docs/testing.md.
+On an Android test device, run the foreground app and search checks in docs/testing.md.
 ```
 
 ## Try the prototype
 
 1. Open the project in Android Studio with JDK 17 and Android SDK 36, sync Gradle, and build a debug APK. For the command line, run `./gradlew :app:assembleDebug` (`.\gradlew.bat :app:assembleDebug` in PowerShell).
-2. Install the debug APK on an Android test device and open Hyperchat. Enable the Hyperchat service in Android's Accessibility settings and install Naver Map separately. Close any Naver Map onboarding or promotional dialogs and return to the map home.
-3. Tap the chat bubble, which starts at the bottom right. Open **+ → 로컬 모델** to import a compatible `.litertlm` file. The optional PowerShell script `./tools/get-model.ps1` fetches the pinned Qwen3-0.6B test model and verifies its size and SHA-256. Ask `Which button should I tap to search for a place?` and press the paper-plane icon.
-4. To run a place search, send `/search Seoul Station` or `서울역 검색해줘` and select **검색 실행**. Hyperchat reports whether it verified a new result screen. This action can run before any model is imported.
+2. Install the debug APK and enable the Hyperchat service in Android Accessibility settings. Open the app you want to use and tap the floating chat bubble.
+3. Open **+ → 로컬 모델** to import a compatible `.litertlm` file. The optional PowerShell script `./tools/get-model.ps1` fetches the pinned Qwen3-0.6B model and verifies its size and SHA-256. Ask a question about the current screen and press Send.
+4. In the current app, send a command such as `디스플레이 열어줘`, `서울역 검색해줘`, or `달빛 정원 검색하고 첫 번째 결과 열어줘` in the test catalog. Check the proposed action and select **동작 실행** or **검색 실행**. Clear commands use the shared executor without loading the model.
 
 **+** also opens the system gallery or text-file picker. Hyperchat extracts text from selected photos on the device and accepts UTF-8 text files. Ask about the attachment or press Send for a short summary.
 
@@ -41,16 +41,20 @@ For a managed TC501, configure the **PTT** key in StageNow **KeyMappingMgr → R
 
 | Check | Status |
 | --- | --- |
-| Android build and automated checks | Debug APK, 12 unit tests and Android lint |
+| Android build and automated checks | Debug APK, unit tests and Android lint |
 | Floating bubble and shortcuts | Android 16 emulator verified drag, tap, Back, swipe, delete, outside-tap cancellation, and restoration from the app shortcut |
 | Composer and attachments | Android 16 emulator checked the menu and draft, a system-picked text document, and a local-model answer from photo OCR |
 | Android fixture search | Passed on Android 16 emulator with an independent result assertion |
+| Foreground navigation | Opened **Display & touch** in Android Settings and independently found the brightness control |
+| Foreground model guide | Qwen3-0.6B identified **Display & touch** from the real Android Settings screen |
+| Search and path reuse | Entered two different queries into the test catalog and opened each matching detail. The second run reused the saved path. |
+| Local action proposal | Qwen3-0.6B proposed opening the catalog search. The input field appeared after user approval. |
 | Naver Map screen guidance | Passed on Android 16 emulator with Naver Map 6.12.1.1 and imported Qwen3-0.6B |
-| Naver Map search | Passed the independent result-screen assertion for `Seoul Station`. The overlay reported submission and asked the user to check the result. |
+| Naver Map search | Verified the `Seoul Station` result screen independently and in the overlay |
 | Physical shortcut integration | TC501 Key Programmer and Galaxy / One UI pending |
 
 Hyperchat observes Android accessibility nodes and its own in-memory diagnostic events. Naver Map is unmodified. This prototype uses Android's user-enabled Accessibility Service. Galaxy/One UI hardware and OEM integration have separate verification requirements.
 
-Natural-language app discovery, app launch, and store search are outside the current implementation. Local AI answers questions about visible controls in supported apps. Place search uses a separate command parser and the user approves the action.
+Verified searches can save their control path locally. Hyperchat checks the app version, screen structure, and live control before reusing it with a new query. Password and sensitive nodes are skipped. This build works with controls exposed to accessibility and stays in the current app. Installed-app lookup and pixel-based control are outside its scope.
 
 [Architecture](docs/architecture.md) · [Design system](docs/design-system.md) · [Testing](docs/testing.md) · [Changelog](docs/CHANGELOG.md)

@@ -4,12 +4,13 @@ import dev.hanzicho.hyperchat.platform.ScreenSnapshot
 import java.util.Locale
 
 /** Screen text is observation data. It cannot dispatch an action. */
-fun guidePrompt(question: String, snapshot: ScreenSnapshot): String {
+fun guidePrompt(question: String, snapshot: ScreenSnapshot, forAction: Boolean = false): String {
     fun clean(value: String, max: Int) = value.filterNot { it.isISOControl() }.take(max)
     val questionText = clean(question, 500)
     val header = "Question: $questionText\nApp: ${clean(snapshot.packageName, 72)}\nVisible controls:\n"
-    val tail = "\nRecent Hyperchat events: " + snapshot.events.takeLast(2).joinToString(" | ") { clean(it, 52) } +
-        "\nAnswer the question in one sentence using an exact visible control label if relevant."
+    val tail = if (forAction) "\nUse only the user's target or search term."
+        else "\nRecent Hyperchat events: " + snapshot.events.takeLast(2).joinToString(" | ") { clean(it, 52) } +
+            "\nAnswer in one sentence using an exact visible control label if relevant."
     val words = questionText.lowercase(Locale.ROOT)
         .split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 2 }.take(16)
     val searchQuestion = "검색" in questionText || "search" in words

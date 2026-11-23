@@ -1,30 +1,32 @@
 # Hyperchat architecture
 
-Hyperchat targets place search and screen guidance over an unmodified Naver Map app. Its Kotlin Android host supplies the chat overlay, accessibility service, policy, and execution. It uses the Android foreground UI and runs as a sideloaded APK. The search path uses neither an AppFunction nor a Naver Map API.
+Hyperchat works over the current Android app through a user-enabled Accessibility Service. The Kotlin host supplies the chat overlay, confirmation, and execution. The node-based executor uses the foreground UI exposed by the app. Naver Map retains its result-screen checks alongside the general executor.
 
 ```mermaid
 flowchart LR
-    A[Chat overlay] --> P[Deterministic parser]
-    P --> B[Search intent]
-    P --> L[Screen question]
-    B --> C[Typed action validation]
-    C --> D[Foreground target and semantic nodes]
+    A[Chat overlay] --> P[Screen command parser]
+    P --> C[Review proposed action]
+    P --> L[Screen question or alternate phrasing]
+    L --> N[Local LiteRT-LM]
+    N --> G[User-visible outcome]
+    N --> C
+    C --> D[Foreground target and current semantic nodes]
     D --> E[Bounded UI action]
     E --> F[Observe and verify result]
-    F --> G[User-visible outcome]
-    F --> H[Hyperchat category events]
-    L --> M[Bounded screen observations]
-    M --> N[Local LiteRT-LM guide]
-    N --> G
+    F --> D
+    F --> G
+    F --> H[Verified search path cache]
+    H --> D
 ```
 
 | Boundary | Contract |
 | --- | --- |
 | Overlay | Collect one query and show progress, completion, cancellation, or an actionable error. Keep app operations explicit and cancellable. |
-| Request routing | `/search` and supported Korean search commands produce a typed search with a bounded query. Other inputs are screen questions. The guide cannot dispatch an action. |
-| Model guide | With a compatible imported `.litertlm` model, LiteRT-LM `0.19.1` answers questions from bounded foreground observations. UI text is evidence, never an instruction. |
-| Accessibility | Restrict search and screen content capture to Naver Map and the test fixture. Match semantic IDs, roles, or labels and refresh the foreground state before each input. |
+| Request routing | Korean and English patterns map to typed search, open, focused input, and navigation. Each proposed action requires approval. |
+| Local model | LiteRT-LM `0.19.1` answers screen questions from bounded observations. For an action request the parser does not recognize, the model can propose a single structured action using a value from the user's request. A malformed proposal cannot execute. |
+| Accessibility | Read the current app's semantic tree, skipping password and sensitive nodes. Recheck the foreground package, window, control identity, and action support before input. |
 | Verification | Require query evidence from a result surface or explicit result summary. A typed query, autocomplete, or accepted gesture does not prove success. Missing evidence remains unverified. |
+| Search path cache | After verified success, save bounded search paths per package, installed version, and structural fingerprint. Store control IDs and action kinds. Recheck each step against live nodes and supply the new query at runtime. |
 | Diagnostics | Record only coarse Hyperchat events such as an unsupported target, cancelled action, timeout, or verified result. Keep queries, raw node trees, screenshots, credentials, and imported model paths out of logs. Do not use another app's process logs as evidence. |
 
 ## Shortcut routing
@@ -65,4 +67,4 @@ Add another picker or capability through the same action list. A vision-model ac
 | Works with Naver Map | Run the unmodified app on Android and assert the observed result. Record the emulator configuration separately from any Galaxy and One UI run. |
 | On-device inference works | A real supported model initializes and produces a result on the target, separately from import, fixture, or stub success. |
 
-Room replay, a shared skill registry, server/local negotiation, and AOSP/OEM integration are beyond this prototype. A successful APK run does not show integration with Samsung firmware.
+The path cache uses private app preferences. Screens without actionable nodes, cross-app navigation, pixel-based control, a shared skill registry, and AOSP/OEM integration are beyond this prototype.

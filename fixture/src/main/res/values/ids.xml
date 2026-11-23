@@ -3,4 +3,10 @@
     <item type="id" name="search_input" />
     <item type="id" name="search_submit" />
     <item type="id" name="search_results" />
+    <item type="id" name="catalog_entry" />
+    <item type="id" name="catalog_title_field" />
+    <item type="id" name="catalog_query_button" />
+    <item type="id" name="catalog_matches" />
+    <item type="id" name="catalog_detail" />
+    <item type="id" name="catalog_detail_query" />
 </resources>

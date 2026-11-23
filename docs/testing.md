@@ -21,6 +21,11 @@ adb shell am instrument -w -e mode composer dev.hanzicho.hyperchat.fixture.test/
 adb shell am instrument -w -e mode bubble dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode bubble-delete dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode model-review dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode generic-action -e repeat true dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode generic-settings dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode generic-settings -e guide true dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode generic-guide dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
+adb shell am instrument -w -e mode generic-plan dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode guide dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 adb shell am instrument -w -e mode naver-search dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe
 ```
@@ -37,20 +42,26 @@ adb shell am start -a dev.hanzicho.hyperchat.action.OPEN_SHORTCUT -n dev.hanzich
 
 The delete probe uses the default system shortcut mapping and checks the stationary long press, top delete action, outside-tap cancellation at the original position, hidden state, and restoration via the explicit shortcut. The model-review probe checks the response to a natural-language app launch request outside supported apps and the confirmed natural-language place search in the fixture. It records UI timings for the place search path.
 
+The catalog uses control IDs and labels independent of the legacy map fixture. `generic-action` verifies that the actual search field received the first query, opens the detail page, repeats with a different query, and requires an explicit cache-reuse indicator. `generic-settings` opens the real Android Settings **Display & touch** screen and checks for a display control. On another English Settings build, pass `-e label Display` if the row is named **Display**. `generic-guide` requires a real local model to name the catalog's visible search control. `generic-plan` requires the local model to propose opening that control, verifies that the catalog stays unchanged before approval, then checks the actual editor after approval.
+
 ## Recorded environment
 
 The local run used JDK 17, Android SDK 36, and an Android 16 API 36 x86-64 emulator. Naver Map was version `6.12.1.1` (`61201000`), running unmodified with ARM translation.
 
 - **Guide.** The pinned Qwen3-0.6B CPU model returned the `Search on NAVER Maps` control, independently observed in the original app window.
-- **Naver Map search.** `/search Seoul Station` opened the Naver Map result screen. The probe found the committed query and Naver Map result container after approval. Hyperchat timed out on its own result check and displayed `검색어 제출 완료 · 결과 확인 필요`.
+- **Naver Map search.** `/search Seoul Station` opened the Naver Map result screen. In the foreground executor regression run, the probe found the committed query and result container after approval, and Hyperchat reported `앱 화면에서 결과 확인`.
 - **Fixture search.** The overlay reported verified completion and the probe independently found the result in the fixture's own window.
 - **Composer and attachments.** The Android 16 run checked the idle row, horizontal menu, draft retention and attachment removal. The system photo picker returned a test image, and the imported Qwen3-0.6B model answered with `ORBIT LANTERN` from its OCR text.
 - **Floating bubble and mappings.** The Android 16 probe verified drag, tap, Back, upward swipe, and draft retention. The system accessibility button and explicit app shortcut both opened the overlay above the fixture. Changing the system mapping in Hyperchat settings was verified for all three actions.
 - **Bubble deletion.** On the same emulator, the probe verified the top delete action, outside-tap cancellation, hiding the bubble, and restoration via the explicit app shortcut.
+- **Foreground navigation.** `Open Display & touch` opened the real Android Settings page. The probe found `Brightness level` in `com.android.settings`.
+- **Foreground model guide.** Asked which visible control opens display options while Android Settings was open. The local model answered `Display & touch`, which the probe independently observed on the screen.
+- **Catalog and path reuse.** `달빛 정원 검색하고 첫 번째 결과 열어줘` and `별빛 도서관 검색하고 첫 번째 결과 열어줘` each reached the named detail with independent proof of the entered query. The second run reported cache reuse. In one emulator run, approval-to-detail was 695 ms then 575 ms. These measurements include test overhead and do not establish the cache's speedup.
+- **Local action proposal.** The imported Qwen3-0.6B produced a plan for `도서 검색 버튼으로 이동해 줘`. Two successive probes observed the `도서 검색` open-action preview and confirmed the search field appeared only after approval. The measured send-to-approval-button times were 5.656 s and 5.646 s on the warm engine.
 
 The system two-finger gesture and physical TC501 Key Programmer and Galaxy / One UI shortcut testing remain pending.
 
-## Natural-language model review
+## Earlier natural-language model review
 
 - In Android Settings, `계산기 열어줘` left Settings in the foreground and returned the unsupported-screen message. The current app has no installed-app lookup, app launch or store search path.
 - In the fixture, `홍대 카페 검색해줘` showed a search confirmation and produced an independently verified result after approval. In one Android 16 emulator run, input injection to confirmation was 2.606 s and approval to result was 7.419 s. These UI measurements include test overhead. The command parser and accessibility action handled the search without model inference.

@@ -32,10 +32,13 @@ import dev.hanzicho.hyperchat.attachment.AttachmentKind
 import dev.hanzicho.hyperchat.attachment.AttachmentPicker
 import dev.hanzicho.hyperchat.attachment.AttachmentResult
 import dev.hanzicho.hyperchat.attachment.DraftAttachment
-import dev.hanzicho.hyperchat.core.ChatRequest
+import dev.hanzicho.hyperchat.core.Direction
+import dev.hanzicho.hyperchat.core.ScreenCommand
 import dev.hanzicho.hyperchat.core.attachmentPrompt
+import dev.hanzicho.hyperchat.core.groundModelScreenCommand
 import dev.hanzicho.hyperchat.core.guidePrompt
-import dev.hanzicho.hyperchat.core.parseRequest
+import dev.hanzicho.hyperchat.core.parseModelScreenCommand
+import dev.hanzicho.hyperchat.core.parseScreenCommand
 import dev.hanzicho.hyperchat.platform.ScreenBridge
 import dev.hanzicho.hyperchat.platform.ScreenSnapshot
 import dev.hanzicho.hyperchat.platform.SearchOutcome
@@ -65,7 +68,7 @@ class OverlayController(
     private var panel: PanelViews? = null
     private var closed = false
     private var active: Job? = null
-    private var pending: PendingSearch? = null
+    private var pending: PendingAction? = null
     private var draft = ""
     private var reply: String? = null
     private var status: String? = null
@@ -74,7 +77,7 @@ class OverlayController(
     private var pickerOpen = false
     private var picker: AutoCloseable? = null
 
-    private data class PendingSearch(val query: String, val packageName: String, val windowId: Int)
+    private data class PendingAction(val command: ScreenCommand, val screen: ScreenSnapshot)
 
     private data class PanelViews(
         val input: EditText,
@@ -367,65 +370,87 @@ class OverlayController(
     }
 
     private fun submit() {
-        if (active?.isActive == true || pickerOpen) return
+        if (active?.isActive == true || pickerOpen || keyguard.isKeyguardLocked) return
         val file = attachment
         val raw = draft.trim()
-        val request = parseRequest(if (raw.isEmpty() && file != null) "첨부한 글을 짧게 요약해 줘." else raw)
+        val question = if (raw.isEmpty() && file != null) "첨부한 글을 짧게 요약해 줘." else raw
+        val command = parseScreenCommand(question)
         pending = null
         menuExpanded = false
         reply = null
-        if (request is ChatRequest.Invalid) {
-            updateStatus(request.reason)
+        if (command is ScreenCommand.Invalid) {
+            updateStatus(command.reason)
             return
         }
-        if (file != null && request is ChatRequest.Search) {
-            updateStatus("지도 검색을 실행하려면 첨부를 제거해 주세요.")
+        if (file != null && command != null) {
+            updateStatus("앱 화면을 조작하려면 첨부를 제거해 주세요.")
             return
         }
         if (file?.text?.isBlank() == true) {
             updateStatus("사진에서 읽을 수 있는 글자를 찾지 못했어요.")
             return
         }
-        val snapshot = if (file == null) bridge.capture()?.takeIf(::supported) else null
+        val snapshot = if (file == null) bridge.capture() else null
         if (file == null && snapshot == null) {
-            updateStatus("네이버지도 화면을 연 뒤 다시 보내 주세요.")
+            updateStatus("대상 앱을 열고 다시 보내 주세요.")
             return
         }
-        if (request is ChatRequest.Guide) {
+        if (file == null && snapshot?.nodes.isNullOrEmpty()) {
+            updateStatus("이 화면에서 읽을 수 있는 요소가 없어요.")
+            return
+        }
+        if (command == null) {
             if (!model.status().installed) {
                 updateStatus("첨부 메뉴의 ‘로컬 모델’에서 .litertlm 파일을 가져와 주세요.")
-                return
-            }
-            if (file == null && snapshot?.nodes.isNullOrEmpty()) {
-                updateStatus("이 화면에서 읽을 수 있는 요소가 없어요.")
                 return
             }
         }
         panel?.input?.text?.clear()
         hideKeyboard()
-        when (request) {
-            is ChatRequest.Search -> {
-                val target = requireNotNull(snapshot)
-                pending = PendingSearch(request.query, target.packageName, target.windowId)
-                updateStatus("검색 실행을 누르면 현재 앱에 검색어를 입력합니다.")
+        if (command != null) stageAction(command, requireNotNull(snapshot))
+        else askModel(question, snapshot, file)
+    }
+
+    private fun stageAction(command: ScreenCommand, target: ScreenSnapshot) {
+        pending = PendingAction(command, target)
+        val description = when (command) {
+            is ScreenCommand.Search -> if (command.openResult) "‘${command.query}’ 검색 후 일치하는 결과 열기"
+                else "‘${command.query}’ 검색"
+            is ScreenCommand.Open -> "‘${command.label}’ 열기"
+            is ScreenCommand.Type -> "선택한 칸에 ‘${command.text}’ 입력"
+            is ScreenCommand.Navigate -> when (command.direction) {
+                Direction.BACK -> "이전 화면으로 이동"
+                Direction.SCROLL_UP -> "위로 스크롤"
+                Direction.SCROLL_DOWN -> "아래로 스크롤"
             }
-            is ChatRequest.Guide -> askModel(request.question, snapshot, file)
-            is ChatRequest.Invalid -> Unit
+            is ScreenCommand.Invalid -> command.reason
         }
+        updateStatus("현재 앱에서 $description")
     }
 
     private fun askModel(question: String, snapshot: ScreenSnapshot?, file: DraftAttachment?) {
         active = scope.launch(start = CoroutineStart.LAZY) {
             updateStatus("기기에서 응답을 만드는 중…")
             try {
-                val answer = if (file != null) {
-                    model.respondToAttachment(attachmentPrompt(question, file.text, file.truncated))
-                } else {
-                    model.respond(guidePrompt(question, requireNotNull(snapshot)))
+                val actionRequest = file == null && mightRequestAction(question)
+                val answer = when {
+                    file != null -> model.respondToAttachment(attachmentPrompt(question, file.text, file.truncated))
+                    actionRequest -> model.proposeScreenAction(guidePrompt(question, requireNotNull(snapshot), forAction = true))
+                    else -> model.respond(guidePrompt(question, requireNotNull(snapshot)))
                 }
                 val current = snapshot?.let { bridge.capture() }
                 if (snapshot != null && (current?.packageName != snapshot.packageName || current.windowId != snapshot.windowId)) {
                     updateStatus("화면이 바뀌었어요. 현재 화면에서 다시 질문해 주세요.")
+                    return@launch
+                }
+                if (actionRequest && answer.trimStart().startsWith('{') && current != null) {
+                    val labels = current.nodes.flatMap { listOf(it.text, it.description) }.filter(String::isNotBlank)
+                    val proposed = parseModelScreenCommand(answer)?.let { groundModelScreenCommand(question, it, labels) }
+                    if (proposed != null && current.nodes == snapshot?.nodes) {
+                        stageAction(proposed, current)
+                    } else {
+                        updateStatus("실행할 대상을 확인하지 못했어요. 현재 화면에서 항목 이름과 동작을 다시 말해 주세요.")
+                    }
                     return@launch
                 }
                 reply = answer.take(1500)
@@ -445,12 +470,19 @@ class OverlayController(
         active?.start()
     }
 
-    private fun executeSearch() {
+    private fun mightRequestAction(question: String): Boolean {
+        val normalized = question.lowercase(java.util.Locale.ROOT)
+        return !normalized.endsWith('?') && actionWords.any { it in normalized } && questionWords.none { it in normalized }
+    }
+
+    private fun executeAction() {
         val plan = pending ?: return
         if (active?.isActive == true) return
         pending = null
         val current = bridge.capture()
-        if (current?.packageName != plan.packageName || current.windowId != plan.windowId) {
+        if (current?.packageName != plan.screen.packageName || current.windowId != plan.screen.windowId ||
+            actionControls(current) != actionControls(plan.screen)
+        ) {
             updateStatus("화면이 바뀌어 실행하지 않았어요. 다시 요청해 주세요.")
             return
         }
@@ -458,18 +490,25 @@ class OverlayController(
         active = scope.launch(start = CoroutineStart.LAZY) {
             showLauncher()
             try {
-                val result = bridge.search(plan.query, current)
-                reply = result.message
+                val result = bridge.execute(plan.command, current)
+                val simpleSearch = plan.command is ScreenCommand.Search && !plan.command.openResult
+                val cacheNote = "저장된 검색 경로를 재사용했어요."
+                reply = when {
+                    simpleSearch && result.cacheHit -> "${result.message}\n$cacheNote"
+                    simpleSearch -> result.message
+                    result.cacheHit -> cacheNote
+                    else -> null
+                }
                 updateStatus(when (result.outcome) {
-                    SearchOutcome.VERIFIED -> "앱 화면에서 결과 확인"
-                    SearchOutcome.SUBMITTED -> "검색어 제출 완료 · 결과 확인 필요"
-                    SearchOutcome.STOPPED -> "검색을 완료하지 못했어요."
+                    SearchOutcome.VERIFIED -> if (simpleSearch) "앱 화면에서 결과 확인" else result.message
+                    SearchOutcome.SUBMITTED -> if (simpleSearch) "검색어 제출 완료 · 결과 확인 필요" else result.message
+                    SearchOutcome.STOPPED -> if (simpleSearch) "검색을 완료하지 못했어요." else result.message
                 })
             } catch (cancelled: CancellationException) {
-                updateStatus("검색을 중지했어요.")
+                updateStatus("화면 동작을 중지했어요.")
                 throw cancelled
             } catch (_: Exception) {
-                updateStatus("앱 화면을 확인할 수 없어 검색을 중단했어요.")
+                updateStatus("앱 화면을 확인할 수 없어 동작을 중단했어요.")
             } finally {
                 active = null
                 if (!closed) openPanel()
@@ -478,19 +517,22 @@ class OverlayController(
         active?.start()
     }
 
+    private fun actionControls(snapshot: ScreenSnapshot) = snapshot.nodes.filter { it.clickable || it.editable }
+
     private fun drawActions() {
         val row = panel?.actions ?: return
         row.removeAllViews()
         if (active?.isActive == true) {
             row.addView(theme.button("중지") { active?.cancel() }.apply { id = R.id.hc_stop })
         } else if (pending != null) {
-            row.addView(theme.button("검색 실행", primary = true) { executeSearch() }.apply { id = R.id.hc_execute })
+            val label = if (pending?.command is ScreenCommand.Search) "검색 실행" else "동작 실행"
+            row.addView(theme.button(label, primary = true) { executeAction() }.apply { id = R.id.hc_execute })
         }
         row.visibility = if (active?.isActive == true || pending != null) View.VISIBLE else View.GONE
     }
 
-    private fun supported(s: ScreenSnapshot?) =
-        s?.packageName == "com.nhn.android.nmap" || s?.packageName == "dev.hanzicho.hyperchat.fixture"
+    private val actionWords = listOf("열어", "찾아", "검색", "눌러", "선택", "입력", "이동", "open", "find", "search", "type")
+    private val questionWords = listOf("어디", "어떤", "어떻게", "방법", "which", "how ", "where ")
 
     private fun render() {
         val views = panel ?: return

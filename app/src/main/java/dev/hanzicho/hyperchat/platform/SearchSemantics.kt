@@ -16,6 +16,8 @@ internal data class SearchNode(
     val visible: Boolean,
     val showingHint: Boolean,
     val canSetText: Boolean,
+    val scrollForward: Boolean = false,
+    val scrollBackward: Boolean = false,
 ) {
     val id: String get() = screen.viewId.substringAfterLast('/')
     val labels: List<String> get() = listOf(screen.text, screen.description, hint)

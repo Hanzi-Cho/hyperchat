@@ -3,7 +3,7 @@ package dev.hanzicho.hyperchat.core
 import java.util.Locale
 
 sealed interface ScreenCommand {
-    data class Search(val query: String, val openResult: Boolean = false) : ScreenCommand
+    data class Search(val query: String, val result: ResultSelection = ResultSelection.NONE) : ScreenCommand
     data class Open(val label: String) : ScreenCommand
     data class Type(val text: String) : ScreenCommand
     data class Navigate(val direction: Direction) : ScreenCommand
@@ -11,6 +11,7 @@ sealed interface ScreenCommand {
 }
 
 enum class Direction { BACK, SCROLL_UP, SCROLL_DOWN }
+enum class ResultSelection { NONE, EXACT, FIRST }
 
 private const val MAX_INPUT = 500
 private const val MAX_TARGET = 80
@@ -27,9 +28,10 @@ private val appCommand = Regex(
 )
 private val leadingPlease = Regex("""^please\s+""", RegexOption.IGNORE_CASE)
 private val trailingPlease = Regex(""",?\s+please$""", RegexOption.IGNORE_CASE)
+private val firstResult = Regex("""(?:첫\s*(?:번째\s*)?|1\s*번째\s*)결과|\bfirst\s+result\b""", RegexOption.IGNORE_CASE)
 private val searchThenOpen = listOf(
-    Regex("""(.+?)[을를]?\s+(?:검색\s*(?:하고|해서|한\s*(?:뒤|후|다음)에?)|찾아서)\s*(?:(?:첫\s*(?:번째\s*)?|1\s*번째\s*)결과[를을]?\s*)?열어\s*(?:줘|주세요)?"""),
-    Regex("""(?:search(?:\s+for)?|find)\s+(.+?)\s+and\s+open\s+(?:(?:the\s+)?first\s+result|it)""", RegexOption.IGNORE_CASE),
+    Regex("""(.+?)[을를]?\s+(?:검색\s*(?:하고|해서|한\s*(?:뒤|후|다음)에?)|찾아서)\s*((?:(?:첫\s*(?:번째\s*)?|1\s*번째\s*|일치하는\s*)결과[를을]?\s*)?)열어\s*(?:줘|주세요)?"""),
+    Regex("""(?:search(?:\s+for)?|find)\s+(.+?)\s+and\s+open\s+((?:the\s+)?(?:first|matching|exact)\s+result|it)""", RegexOption.IGNORE_CASE),
 )
 private val searchCommand = listOf(
     Regex("""(.+?)[을를]?\s+(?:검색\s*해|찾아)\s*(?:줘|주세요)?"""),
@@ -71,9 +73,14 @@ fun parseScreenCommand(input: String): ScreenCommand? {
     englishTypeCommand.capture(phrase)?.let { return type(it) }
     val command = phrase.trimEnd('.', '!').trimEnd().replace(trailingPlease, "")
     if (appCommand.matches(command)) return ScreenCommand.Invalid(OTHER_APP)
-    searchThenOpen.capture(command)?.let { return search(it, openResult = true) }
+    searchThenOpen.firstNotNullOfOrNull { it.matchEntire(command) }?.let { match ->
+        val result = if (firstResult.containsMatchIn(match.groupValues[2])) ResultSelection.FIRST else ResultSelection.EXACT
+        return search(match.groupValues[1].trim().removeSurrounding("\""), result)
+    }
     searchCommand.capture(command)?.let { return search(it) }
-    openCommand.capture(command)?.let { return open(it) }
+    // Android menus often include a literal ellipsis, for example Total Commander's "Search...".
+    val openPhrase = if (phrase.startsWith("open ", ignoreCase = true) && phrase.endsWith("...")) phrase else command
+    openCommand.capture(openPhrase)?.let { return open(it) }
     koreanTypeCommand.capture(command)?.let { return type(it) }
     return when {
         backCommand.matches(command) -> ScreenCommand.Navigate(Direction.BACK)
@@ -88,8 +95,8 @@ private fun List<Regex>.capture(command: String): String? = firstNotNullOfOrNull
 private fun Regex.capture(command: String): String? =
     matchEntire(command)?.groupValues?.get(1)?.trim()?.removeSurrounding("\"")
 
-private fun search(query: String, openResult: Boolean = false): ScreenCommand =
-    if (validValue(query, MAX_TARGET)) ScreenCommand.Search(query, openResult)
+private fun search(query: String, result: ResultSelection = ResultSelection.NONE): ScreenCommand =
+    if (validValue(query, MAX_TARGET)) ScreenCommand.Search(query, result)
     else ScreenCommand.Invalid("검색어는 1~80자여야 합니다.")
 
 private fun open(label: String): ScreenCommand =
@@ -121,7 +128,7 @@ fun parseModelScreenCommand(json: String): ScreenCommand? {
     val value = decoded.trim()
     val result = when (fields["action"]?.lowercase(Locale.ROOT)) {
         "search" -> search(value)
-        "search_open" -> search(value, openResult = true)
+        "search_open" -> search(value, ResultSelection.EXACT)
         "open" -> open(value)
         "type" -> type(value)
         "back" -> ScreenCommand.Navigate(Direction.BACK).takeIf { "value" !in fields }
@@ -150,8 +157,12 @@ internal fun groundModelScreenCommand(
     val visibleTarget = visibleLabels.firstOrNull { it.equals(value, ignoreCase = true) }
     return when (proposal) {
         is ScreenCommand.Search -> when {
+            searchIntent.containsMatchIn(intent) -> proposal.copy(result = when {
+                !wantsOpen -> ResultSelection.NONE
+                firstResult.containsMatchIn(intent) -> ResultSelection.FIRST
+                else -> proposal.result
+            })
             wantsOpen && visibleTarget != null -> ScreenCommand.Open(visibleTarget)
-            searchIntent.containsMatchIn(intent) -> proposal.copy(openResult = proposal.openResult && wantsOpen)
             else -> null
         }
         is ScreenCommand.Open -> proposal.takeIf { wantsOpen }

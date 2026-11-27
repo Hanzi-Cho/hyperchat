@@ -4,14 +4,17 @@ Hyperchat works over the current Android app through a user-enabled Accessibilit
 
 ```mermaid
 flowchart LR
-    A[Chat overlay] --> P[Screen command parser]
+    S[In-app consent and Android service enabled] --> A[Chat overlay]
+    A --> P[Screen request]
+    P -->|List controls| R[Read visible enabled control labels]
+    R --> G[User-visible outcome]
     P --> C[Review proposed action]
     P --> L[Screen question or alternate phrasing]
     L --> N[Local LiteRT-LM]
-    N --> G[User-visible outcome]
+    N --> G
     N --> C
     C --> D[Foreground target and current semantic nodes]
-    D --> E[Bounded UI action]
+    D --> E[Check supported control and execute]
     E --> F[Observe and verify result]
     F --> D
     F --> G
@@ -22,12 +25,14 @@ flowchart LR
 | Boundary | Contract |
 | --- | --- |
 | Overlay | Collect one query and show progress, completion, cancellation, or an actionable error. Keep app operations explicit and cancellable. |
-| Request routing | Korean and English patterns map to typed search, open, focused input, and navigation. Each proposed action requires approval. |
+| Request routing | An explicit `버튼 목록` or `/controls` request reads labeled controls from a single filtered snapshot without inference or interaction. Korean and English action patterns map to typed search, open, focused input, and navigation. The action preview distinguishes the first result from an exact match. Each proposed operation requires approval. |
 | Local model | LiteRT-LM `0.19.1` answers screen questions from bounded observations. For an action request the parser does not recognize, the model can propose a single structured action using a value from the user's request. A malformed proposal cannot execute. |
 | Accessibility | Read the current app's semantic tree, skipping password and sensitive nodes. Recheck the foreground package, window, control identity, and action support before input. |
 | Verification | Require query evidence from a result surface or explicit result summary. A typed query, autocomplete, or accepted gesture does not prove success. Missing evidence remains unverified. |
 | Search path cache | After verified success, save bounded search paths per package, installed version, and structural fingerprint. Store control IDs and action kinds. Recheck each step against live nodes and supply the new query at runtime. |
-| Diagnostics | Record only coarse Hyperchat events such as an unsupported target, cancelled action, timeout, or verified result. Keep queries, raw node trees, screenshots, credentials, and imported model paths out of logs. Do not use another app's process logs as evidence. |
+| Diagnostics | Record coarse Hyperchat events such as a cancelled action or timeout. The current screen snapshot includes events from its own package and window. Withdrawing access clears the in-memory history. Queries, raw trees, screenshots, credentials and model paths stay out of these events. |
+
+The Android host requires in-app acceptance of its screen-access disclosure and a separately enabled accessibility service. A connection without recorded acceptance disables itself. Withdrawal interrupts execution and disconnects the service. Existing installations are shown the disclosure when upgrading from a version that did not record this choice. The model is optional for the screen control list and deterministic commands.
 
 ## Shortcut routing
 
@@ -35,7 +40,7 @@ The collapsed accessibility overlay handles taps and upward swipes that start on
 
 A stationary hold adds a focusable delete overlay while the bubble keeps the initial touch stream. Starting a drag dismisses the delete overlay and moves the bubble. The delete action saves a visibility preference, which the service applies when it reconnects. Settings can restore the bubble independently of the configured shortcut action.
 
-`ShortcutActivity` accepts the explicit `dev.hanzicho.hyperchat.action.OPEN_SHORTCUT` action on an unlocked device and passes it to the connected accessibility service. Search still requires a separate confirmation in the composer. [Shortcut setup](../README.md#open-hyperchat-with-a-shortcut)
+`ShortcutActivity` accepts the explicit `dev.hanzicho.hyperchat.action.OPEN_SHORTCUT` action on an unlocked device and passes it to the connected accessibility service. Search still requires a separate confirmation in the composer. [Shortcut setup](shortcuts.md)
 
 ## Attachments
 

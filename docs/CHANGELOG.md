@@ -1,7 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.0.1 · 2026-11-27
 
+- First signed [Android APK on GitHub Releases](https://github.com/Hanzi-Cho/hyperchat/releases/tag/v0.0.1), for Android 8.0+ on ARM64 and x86-64. The release includes a SHA-256 file for the installable APK.
+- Rewrote the [quickstart](../README.md) around a model-free action in Android Settings, with expected results in VLC, Total Commander and AnkiDroid. The source build and device probes have separate entry points.
+
+- Added an offline, model-free list of labeled controls and made it the first suggested task in settings.
+- Target Android 16 (API 36). Added an in-app screen-access disclosure, a decline path, consent withdrawal, and service disconnection when consent is missing or withdrawn.
+- Distinguished first-ranked and exact search results, restricted opening controls with unknown effects, and kept user-provided targets out of failure diagnostics.
+- Editing the composer cancels a pending approval. Diagnostics in screen guidance are scoped to the current app and window.
+- Added a version-pinned [offline test suite for legacy apps](legacy-app-scenarios.md), with APK inspection and independent assertions in the original apps.
 - Generalized screen guidance and approved UI actions to the foreground app. Added exact-result opening, focused text entry, and bounded in-app navigation.
 - Added a private search path cache that revalidates stable control IDs and supplies the current query at execution time.
 - Added a movable 48 dp chat bubble with saved position, tap, and upward swipe.

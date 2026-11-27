@@ -12,6 +12,8 @@
     <item type="id" name="hc_status" />
     <item type="id" name="hc_reply" />
     <item type="id" name="hc_import" />
+    <item type="id" name="hc_screen_access" />
+    <item type="id" name="hc_revoke_access" />
     <item type="id" name="hc_diagnostic" />
     <item type="id" name="hc_gpu_diagnostic" />
     <item type="id" name="hc_diagnostic_status" />

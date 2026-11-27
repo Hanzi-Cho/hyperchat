@@ -18,6 +18,13 @@ internal data class SearchNode(
     val canSetText: Boolean,
     val scrollForward: Boolean = false,
     val scrollBackward: Boolean = false,
+    val className: String = "",
+    val checkable: Boolean = false,
+    val selected: Boolean = false,
+    val checked: Boolean = false,
+    val collectionRow: Int? = null,
+    val collectionColumn: Int? = null,
+    val searchEditor: Boolean = false,
 ) {
     val id: String get() = screen.viewId.substringAfterLast('/')
     val labels: List<String> get() = listOf(screen.text, screen.description, hint)
@@ -54,11 +61,11 @@ internal object SearchSemantics {
         }
         val named = fields.filter { index ->
             val node = nodes[index]
-            node.id in inputIds || node.labels.any { key(it) in entryLabels }
+            node.id in inputIds || listOf(node.hint, node.screen.description).any { key(it) in entryLabels } ||
+                (node.showingHint && key(node.screen.text) in entryLabels)
         }
         if (named.isNotEmpty()) return named.singleOrNull()
-        // An otherwise unnamed field is safe only after an identified search entry was activated.
-        return if (afterEntry) fields.singleOrNull() else null
+        return if (afterEntry) fields.singleOrNull { nodes[it].searchEditor } else null
     }
 
     fun findSubmit(packageName: String, nodes: List<SearchNode>): Int? =

@@ -23,7 +23,10 @@ import kotlinx.coroutines.launch
 class SettingsActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val model get() = (application as HyperchatApp).model
+    private val app get() = application as HyperchatApp
     private val shortcuts by lazy { ShortcutPreferences(this) }
+    private lateinit var screenAccess: Button
+    private lateinit var withdrawAccess: Button
     private lateinit var modelLabel: TextView
     private lateinit var importButton: View
     private lateinit var diagnosticButton: View
@@ -46,12 +49,18 @@ class SettingsActivity : Activity() {
         add(theme.label("HYPERCHAT", 12f, theme.accent, true), 0)
         add(theme.label("앱 위에서 바로 도움받기", 27f, bold = true))
         add(theme.label(getString(R.string.settings_overlay_intro), color = theme.muted))
-        add(theme.label("1  오버레이 사용", 18f, bold = true), 32)
+        add(theme.label("채팅 버블 시작하기", 18f, bold = true), 32)
         add(theme.label(getString(R.string.settings_overlay_help), color = theme.muted))
-        add(theme.button("접근성 설정 열기", primary = true) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        })
-        add(theme.label("2  온디바이스 모델", 18f, bold = true), 32)
+        screenAccess = theme.button(getString(R.string.consent_review), primary = true) {
+            if (app.screenAccessAccepted) openAccessibilitySettings() else showScreenAccessDisclosure()
+        }.apply { id = R.id.hc_screen_access }
+        add(screenAccess)
+        withdrawAccess = theme.button(getString(R.string.consent_withdraw)) {
+            app.screenAccessAccepted = false
+            renderConsent()
+        }.apply { id = R.id.hc_revoke_access }
+        add(withdrawAccess)
+        add(theme.label(getString(R.string.model_optional), 18f, bold = true), 32)
         modelLabel = theme.label(model.status().message, color = theme.muted)
         add(modelLabel)
         importButton = theme.button(".litertlm 모델 가져오기") {
@@ -122,12 +131,36 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        renderConsent()
         if (!modelBusy) {
             val status = model.status()
             modelLabel.text = status.message
             diagnosticButton.isEnabled = status.installed
             gpuDiagnosticButton.isEnabled = status.installed
         }
+    }
+
+    private fun renderConsent() {
+        val accepted = app.screenAccessAccepted
+        screenAccess.setText(if (accepted) R.string.consent_system_settings else R.string.consent_review)
+        withdrawAccess.visibility = if (accepted) View.VISIBLE else View.GONE
+    }
+
+    private fun showScreenAccessDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.consent_title)
+            .setMessage(R.string.consent_details)
+            .setNegativeButton(R.string.consent_decline, null)
+            .setPositiveButton(R.string.consent_accept) { _, _ ->
+                app.screenAccessAccepted = true
+                renderConsent()
+                openAccessibilitySettings()
+            }
+            .show()
+    }
+
+    private fun openAccessibilitySettings() {
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
     @Deprecated("Handles the system document picker result.")
@@ -137,7 +170,7 @@ class SettingsActivity : Activity() {
         val uri = data?.data ?: return
         scope.launch {
             setModelBusy(true)
-            modelLabel.text = "모델 파일을 기기에 복사하는 중…"
+            modelLabel.text = "모델을 복사하고 이 기기에서 실행되는지 확인하는 중…"
             try {
                 model.importModel(uri)
                 modelLabel.text = model.status().message

@@ -1,0 +1,20 @@
+Third-party notices for the Android app
+
+The dependencies directory contains license files supplied by Android libraries,
+including LiteRT-LM, ML Kit and Google Play services. Each directory identifies
+the original artifact and version. Paired third_party_licenses.json and .txt
+files are kept together so the byte offsets in the index remain valid.
+
+The Kotlin standard library and reflection library are distributed under the
+Apache License, Version 2.0. See kotlin-NOTICE.txt for the upstream notice.
+https://github.com/JetBrains/kotlin/tree/v2.4.0/license
+
+kotlinx.coroutines for Android and the JVM is distributed under the Apache
+License, Version 2.0.
+Copyright 2000-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+https://github.com/Kotlin/kotlinx.coroutines/blob/1.11.0/LICENSE.txt
+
+The complete Apache License, Version 2.0 is included in google-material-icons.txt.
+The Google ML Kit and Android SDK terms are published at:
+https://developers.google.com/ml-kit/terms
+https://developer.android.com/studio/terms

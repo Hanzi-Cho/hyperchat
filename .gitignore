@@ -10,6 +10,8 @@
 *.litertlm.*
 *.jks
 *.keystore
+*.p12
+keystore.properties
 *.log
 .env
 .env.*

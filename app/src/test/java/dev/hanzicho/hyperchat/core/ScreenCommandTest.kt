@@ -11,15 +11,15 @@ class ScreenCommandTest {
         assertEquals(ScreenCommand.Search("서울역"), parseScreenCommand("서울역을 검색해 줘"))
         assertEquals(ScreenCommand.Search("테스트 문서"), parseScreenCommand("테스트 문서 찾아줘"))
         assertEquals(
-            ScreenCommand.Search("달빛 정원", openResult = true),
+            ScreenCommand.Search("달빛 정원", ResultSelection.FIRST),
             parseScreenCommand("현재 앱에서 달빛 정원 검색하고 첫 번째 결과를 열어줘."),
         )
         assertEquals(
-            ScreenCommand.Search("테스트 문서", openResult = true),
+            ScreenCommand.Search("테스트 문서", ResultSelection.EXACT),
             parseScreenCommand("테스트 문서 찾아서 열어줘"),
         )
         assertEquals(
-            ScreenCommand.Search("Moon Garden", openResult = true),
+            ScreenCommand.Search("Moon Garden", ResultSelection.FIRST),
             parseScreenCommand("Please search for Moon Garden and open the first result."),
         )
     }
@@ -27,6 +27,8 @@ class ScreenCommandTest {
     @Test fun parsesOpenTypeAndNavigationAsSeparateActions() {
         assertEquals(ScreenCommand.Open("검색창"), parseScreenCommand("검색창을 열어 줘"))
         assertEquals(ScreenCommand.Open("Downloads"), parseScreenCommand("Open the Downloads, please."))
+        assertEquals(ScreenCommand.Open("Search..."), parseScreenCommand("Open Search..."))
+        assertEquals(ScreenCommand.Open("Search..."), parseScreenCommand("Open \"Search...\""))
         assertEquals(ScreenCommand.Type("테스트 문서"), parseScreenCommand("검색창에 테스트 문서를 입력해 줘"))
         assertEquals(ScreenCommand.Type("Hello!"), parseScreenCommand("Type \"Hello!\""))
         assertEquals(ScreenCommand.Type("Hello!"), parseScreenCommand("Please type Hello!"))
@@ -48,7 +50,7 @@ class ScreenCommandTest {
 
     @Test fun validatesOneStructuredPlanAndDecodesOnlyItsPayload() {
         assertEquals(
-            ScreenCommand.Search("테스트 문서", openResult = true),
+            ScreenCommand.Search("테스트 문서", ResultSelection.EXACT),
             parseModelScreenCommand("""{"value":"테스트 문서","action":"search_open"}"""),
         )
         assertEquals(
@@ -70,6 +72,14 @@ class ScreenCommandTest {
         assertNull(parseModelScreenCommand("""{"action":"search","value":"${"a".repeat(81)}"}"""))
         assertNull(parseModelScreenCommand("""{"action":"launch_app","value":"계산기"}"""))
         assertNull(parseModelScreenCommand("""[{"action":"back"},{"action":"scroll_up"}]"""))
+    }
+
+    @Test fun groundsRankingInTheRequestRatherThanInTheQuery() {
+        val proposed = ScreenCommand.Search("first result", ResultSelection.EXACT)
+        assertEquals(proposed, parseScreenCommand("find first result and open it"))
+        assertEquals(proposed, groundModelScreenCommand("find first result and open it", proposed, emptyList()))
+        val first = ScreenCommand.Search("달빛", ResultSelection.FIRST)
+        assertEquals(first, groundModelScreenCommand("달빛 검색해서 첫 번째 결과를 열어", ScreenCommand.Search("달빛"), emptyList()))
     }
 
     @Test fun groundsAProposedSearchButtonAsNavigationWithoutSubmittingIt() {

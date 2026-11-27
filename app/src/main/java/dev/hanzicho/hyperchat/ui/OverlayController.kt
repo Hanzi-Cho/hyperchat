@@ -34,11 +34,14 @@ import dev.hanzicho.hyperchat.attachment.AttachmentResult
 import dev.hanzicho.hyperchat.attachment.DraftAttachment
 import dev.hanzicho.hyperchat.core.Direction
 import dev.hanzicho.hyperchat.core.ScreenCommand
+import dev.hanzicho.hyperchat.core.ResultSelection
 import dev.hanzicho.hyperchat.core.attachmentPrompt
 import dev.hanzicho.hyperchat.core.groundModelScreenCommand
 import dev.hanzicho.hyperchat.core.guidePrompt
+import dev.hanzicho.hyperchat.core.isControlListRequest
 import dev.hanzicho.hyperchat.core.parseModelScreenCommand
 import dev.hanzicho.hyperchat.core.parseScreenCommand
+import dev.hanzicho.hyperchat.core.visibleControlLabels
 import dev.hanzicho.hyperchat.platform.ScreenBridge
 import dev.hanzicho.hyperchat.platform.ScreenSnapshot
 import dev.hanzicho.hyperchat.platform.SearchOutcome
@@ -264,8 +267,15 @@ class OverlayController(
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
                 override fun afterTextChanged(s: Editable?) {
-                    draft = s?.toString().orEmpty()
-                    updateButtons()
+                    val edited = s?.toString().orEmpty()
+                    if (edited == draft) return
+                    draft = edited
+                    if (pending != null) {
+                        pending = null
+                        updateStatus(service.getString(R.string.approval_draft_changed))
+                    } else {
+                        updateButtons()
+                    }
                 }
             })
             setOnEditorActionListener { _, action, _ ->
@@ -399,9 +409,17 @@ class OverlayController(
             updateStatus("이 화면에서 읽을 수 있는 요소가 없어요.")
             return
         }
+        if (snapshot != null && isControlListRequest(question)) {
+            val labels = visibleControlLabels(snapshot.nodes)
+            panel?.input?.text?.clear()
+            hideKeyboard()
+            reply = labels.takeIf { it.isNotEmpty() }?.joinToString("\n") { "• $it" }
+            updateStatus(service.getString(if (labels.isEmpty()) R.string.controls_empty else R.string.controls_listed))
+            return
+        }
         if (command == null) {
             if (!model.status().installed) {
-                updateStatus("첨부 메뉴의 ‘로컬 모델’에서 .litertlm 파일을 가져와 주세요.")
+                updateStatus(service.getString(if (file == null) R.string.controls_model_hint else R.string.model_attachment_hint))
                 return
             }
         }
@@ -414,9 +432,12 @@ class OverlayController(
     private fun stageAction(command: ScreenCommand, target: ScreenSnapshot) {
         pending = PendingAction(command, target)
         val description = when (command) {
-            is ScreenCommand.Search -> if (command.openResult) "‘${command.query}’ 검색 후 일치하는 결과 열기"
-                else "‘${command.query}’ 검색"
-            is ScreenCommand.Open -> "‘${command.label}’ 열기"
+            is ScreenCommand.Search -> when (command.result) {
+                ResultSelection.FIRST -> "‘${command.query}’ 검색 후 첫 번째 결과 열기"
+                ResultSelection.EXACT -> "‘${command.query}’ 검색 후 이름이 일치하는 결과 열기"
+                ResultSelection.NONE -> "‘${command.query}’ 검색"
+            }
+            is ScreenCommand.Open -> "‘${command.label}’ 열기 (화면에 없으면 현재 앱에서 찾기)"
             is ScreenCommand.Type -> "선택한 칸에 ‘${command.text}’ 입력"
             is ScreenCommand.Navigate -> when (command.direction) {
                 Direction.BACK -> "이전 화면으로 이동"
@@ -444,6 +465,10 @@ class OverlayController(
                     return@launch
                 }
                 if (actionRequest && answer.trimStart().startsWith('{') && current != null) {
+                    if (draft.isNotBlank()) {
+                        updateStatus(service.getString(R.string.approval_draft_changed))
+                        return@launch
+                    }
                     val labels = current.nodes.flatMap { listOf(it.text, it.description) }.filter(String::isNotBlank)
                     val proposed = parseModelScreenCommand(answer)?.let { groundModelScreenCommand(question, it, labels) }
                     if (proposed != null && current.nodes == snapshot?.nodes) {
@@ -491,7 +516,7 @@ class OverlayController(
             showLauncher()
             try {
                 val result = bridge.execute(plan.command, current)
-                val simpleSearch = plan.command is ScreenCommand.Search && !plan.command.openResult
+                val simpleSearch = plan.command is ScreenCommand.Search && plan.command.result == ResultSelection.NONE
                 val cacheNote = "저장된 검색 경로를 재사용했어요."
                 reply = when {
                     simpleSearch && result.cacheHit -> "${result.message}\n$cacheNote"

@@ -94,7 +94,7 @@ class ModelManager(context: Context) : AutoCloseable {
         return if (size > 0) {
             ModelStatus(true, size, "로컬 모델 가져오기 완료")
         } else {
-            ModelStatus(false, 0, "먼저 .litertlm 모델을 가져와 주세요.")
+            ModelStatus(false, 0, "로컬 모델 없음 · 화면에 대해 자유롭게 질문하려면 .litertlm 모델을 가져오세요.")
         }
     }
 

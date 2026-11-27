@@ -54,6 +54,9 @@ public final class HyperchatProbe extends Instrumentation {
                 case "generic-action": genericAction(result); break;
                 case "generic-plan": genericPlan(result); break;
                 case "generic-settings": genericSettings(result); break;
+                case "legacy": legacy(result, false); break;
+                case "legacy-negative": legacy(result, true); break;
+                case "tc-type": typeInCommanderForm(result); break;
                 case "model-review": modelReview(result); break;
                 case "naver-search": search(result, MAP); break;
                 case "fixture": search(result, FIXTURE); break;
@@ -87,6 +90,111 @@ public final class HyperchatProbe extends Instrumentation {
             "책을 찾으려면 어떤 버튼을 눌러야 해? 버튼 이름을 화면에 나온 그대로 알려줘.", "catalog-model-guide");
     }
 
+    private void legacy(Bundle result, boolean negative) throws Exception {
+        LegacyScreen screen = LegacyScreen.forApp(args.getString("app", ""));
+        Predicate<AccessibilityNodeInfo> entry = n -> screen.matches(n, screen.entry);
+        Predicate<AccessibilityNodeInfo> destination = n -> screen.matches(n, screen.destination);
+        requireVisible(entry, 10000, "original app entry " + screen.entry);
+        if (find(destination) != null) throw new AssertionError("Destination is already visible before the request");
+        openOverlay();
+        if (negative) {
+            send("Open " + screen.entry);
+            requireVisible(n -> id(n, "hc_execute") && n.isEnabled(), 6000, "approval before editing");
+            setDraft("계산기 앱 열어줘");
+            requireVisible(n -> id(n, "hc_status") && string(n.getText()).contains("이전 동작을 취소"), 5000, "edited draft cancelled approval");
+            if (find(n -> id(n, "hc_execute") && n.isEnabled()) != null) throw new AssertionError("Edited draft retained an earlier approval");
+            result.putString("editedDraft", "previous approval cancelled");
+            send("계산기 앱 열어줘");
+            requireVisible(n -> id(n, "hc_status") && string(n.getText()).contains("현재 화면 안에서만"), 5000, "unsupported app launch explained");
+            if (find(n -> id(n, "hc_execute") && n.isEnabled()) != null) throw new AssertionError("Unsupported request offered an action");
+            requireVisible(entry, 3000, "original app still in its initial state");
+            if (find(destination) != null) throw new AssertionError("Unsupported request moved the source screen");
+            result.putString("screenshot", screenshot("legacy-" + screen.key + "-unsupported"));
+            return;
+        }
+        if (screen.readControls) {
+            send("/controls");
+            AccessibilityNodeInfo answer = requireVisible(n -> id(n, "hc_reply") && !string(n.getText()).isEmpty(),
+                6000, "read-only control list");
+            String observed = null;
+            for (String line : string(answer.getText()).split("\n")) {
+                String label = line.replaceFirst("^•\\s*", "").trim();
+                if (!label.isEmpty() && find(n -> n.isEnabled() && n.isClickable() && screen.matches(n, label)) != null) {
+                    observed = label;
+                    break;
+                }
+            }
+            if (observed == null) throw new AssertionError("No listed control is visible in the original app");
+            if (find(n -> id(n, "hc_execute") && n.isEnabled()) != null) throw new AssertionError("Reading offered a write action");
+            requireVisible(entry, 3000, "entry still visible after listing controls");
+            if (find(destination) != null) throw new AssertionError("Reading changed the source screen");
+            result.putString("controlProof", observed);
+            result.putString("controlsScreenshot", screenshot("legacy-" + screen.key + "-controls"));
+        }
+        send("Open " + screen.entry);
+        AccessibilityNodeInfo approve = requireVisible(n -> id(n, "hc_execute") && n.isEnabled(), 8000, "user approval");
+        requireVisible(n -> id(n, "hc_status") && string(n.getText()).contains(screen.entry), 4000, "preview names the requested control");
+        requireVisible(entry, 4000, "original entry before approval");
+        if (find(destination) != null) throw new AssertionError("Destination reached before approval");
+        result.putString("approvalScreenshot", screenshot("legacy-" + screen.key + "-approval"));
+        click(approve);
+        AccessibilityNodeInfo reached = requireVisible(destination, 18000, "new label in original app " + screen.destination);
+        result.putString("targetPackage", string(reached.getPackageName()));
+        result.putString("destinationProof", screen.destination);
+        requireVisible(n -> id(n, "hc_status") && "요청한 결과 화면을 열었습니다.".equals(string(n.getText())),
+            10000, "verified status after the original app reached its destination");
+        result.putString("resultScreenshot", screenshot("legacy-" + screen.key + "-result"));
+    }
+
+    private static final class LegacyScreen {
+        final String key, pkg, entry, destination;
+        final boolean readControls;
+
+        LegacyScreen(String key, String pkg, String entry, String destination, boolean readControls) {
+            this.key = key;
+            this.pkg = pkg;
+            this.entry = entry;
+            this.destination = destination;
+            this.readControls = readControls;
+        }
+
+        static LegacyScreen forApp(String app) {
+            switch (app) {
+                case "vlc": return new LegacyScreen(app, "org.videolan.vlc", "Audio", "ARTISTS", true);
+                case "tc": return new LegacyScreen(app, "com.ghisler.android.TotalCommander", "Search...", "Find files", false);
+                case "aimp": return new LegacyScreen(app, "com.aimp.player", "Main menu", "Managing playlists", true);
+                case "anki": return new LegacyScreen(app, "com.ichi2.anki", "Card browser", "0 cards shown", false);
+                default: throw new IllegalArgumentException("Supply -e app vlc, tc, aimp or anki");
+            }
+        }
+
+        boolean matches(AccessibilityNodeInfo node, String label) {
+            return pkg.equals(string(node.getPackageName())) && (label.equalsIgnoreCase(string(node.getText()).trim()) ||
+                label.equalsIgnoreCase(string(node.getContentDescription()).trim()));
+        }
+    }
+
+    private void typeInCommanderForm(Bundle result) throws Exception {
+        String target = "com.ghisler.android.TotalCommander";
+        Predicate<AccessibilityNodeInfo> nameField = n -> (target + ":id/name").equals(string(n.getViewIdResourceName())) && n.isEditable();
+        AccessibilityNodeInfo field = requireVisible(nameField, 6000, "Find files name field");
+        String initial = string(field.getText());
+        String draft = "hyperchat-demo.txt";
+        if (draft.equals(initial)) throw new AssertionError("Start with an unchanged search form");
+        click(field);
+        requireVisible(n -> nameField.test(n) && n.isFocused(), 5000, "focused search field");
+        openOverlay();
+        send("Type " + draft);
+        AccessibilityNodeInfo approve = requireVisible(n -> id(n, "hc_execute") && n.isEnabled(), 6000, "explicit input approval");
+        requireVisible(n -> id(n, "hc_status") && string(n.getText()).contains(draft), 4000, "input preview");
+        requireVisible(n -> nameField.test(n) && initial.equals(string(n.getText())), 4000, "field unchanged before approval");
+        click(approve);
+        requireVisible(n -> nameField.test(n) && draft.equals(string(n.getText())), 10000, "exact value in original app after approval");
+        requireVisible(n -> (target + ":id/okbtn").equals(string(n.getViewIdResourceName())), 3000, "search still unsubmitted");
+        result.putString("fieldProof", target + ":id/name = " + draft);
+        result.putString("screenshot", screenshot("legacy-tc-unsubmitted-input"));
+    }
+
     private void answerGuide(Bundle result, String target, String searchLabel, String question, String screenshotName)
             throws Exception {
         requireVisible(n -> target.equals(string(n.getPackageName())) &&
@@ -111,9 +219,9 @@ public final class HyperchatProbe extends Instrumentation {
     }
 
     private void genericAction(Bundle result) throws Exception {
-        runCatalogSearch(result, "first", "달빛 정원");
+        runCatalogSearch(result, "first", "달빛", "첫 번째", "달빛 정원");
         if (Boolean.parseBoolean(args.getString("repeat", "false"))) {
-            runCatalogSearch(result, "repeat", "별빛 도서관");
+            runCatalogSearch(result, "repeat", "별빛 도서관", "일치하는", "별빛 도서관");
             requireVisible(n -> id(n, "hc_reply") && string(n.getText()).contains("저장된 검색 경로를 재사용했어요."),
                 5000, "saved search path reused with the new query");
         }
@@ -177,10 +285,10 @@ public final class HyperchatProbe extends Instrumentation {
         result.putString("screenshot", screenshot("catalog-model-plan"));
     }
 
-    private void runCatalogSearch(Bundle result, String run, String query) throws Exception {
+    private void runCatalogSearch(Bundle result, String run, String query, String selection, String book) throws Exception {
         openCatalogComposer();
         long requested = SystemClock.elapsedRealtime();
-        send(query + " 검색하고 첫 번째 결과 열어줘");
+        send(query + " 검색하고 " + selection + " 결과 열어줘");
         AccessibilityNodeInfo execute = requireVisible(n -> id(n, "hc_execute") && n.isEnabled(),
             6000, "explicit approval for search and open");
         if (find(n -> (FIXTURE + ":id/catalog_detail").equals(string(n.getViewIdResourceName()))) != null) {
@@ -190,7 +298,7 @@ public final class HyperchatProbe extends Instrumentation {
         click(execute);
         AccessibilityNodeInfo detail = requireVisible(n ->
             (FIXTURE + ":id/catalog_detail").equals(string(n.getViewIdResourceName())) &&
-            ("도서 상세: " + query).equals(string(n.getText())), 45000, "independent catalog detail after opening first result");
+            ("도서 상세: " + book).equals(string(n.getText())), 45000, "independent catalog detail after opening requested result");
         long opened = SystemClock.elapsedRealtime();
         requireVisible(n -> (FIXTURE + ":id/catalog_detail_query").equals(string(n.getViewIdResourceName())) &&
             ("검색어: " + query).equals(string(n.getText())), 5000, "exact query submitted to the catalog");
@@ -274,10 +382,6 @@ public final class HyperchatProbe extends Instrumentation {
     }
 
     private void openCatalogComposer() throws Exception {
-        if (find(n -> id(n, "hc_prompt")) != null) {
-            pressBack();
-            requireIcon("hc_open");
-        }
         launchCatalog();
         requireCatalogEntry();
         openOverlay();

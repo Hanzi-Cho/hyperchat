@@ -1,5 +1,7 @@
 # Android verification
 
+For offline tests on unmodified VLC, Total Commander, AIMP and AnkiDroid, see the [legacy app runbook](legacy-app-scenarios.md) for pinned APKs, starting screens and independent assertions.
+
 ## Local checks
 
 With JDK 17 and Android SDK 36 installed, run:
@@ -12,7 +14,7 @@ Use `./gradlew.bat` in PowerShell. Unit tests cover command parsing, prompt size
 
 ## Device checks
 
-Install `app-debug.apk`, `fixture-debug.apk`, and `fixture-debug-androidTest.apk` from the corresponding `build/outputs/apk/` directories. Add `-t` when installing the instrumentation APK with `adb`. Enable Hyperchat in Android Accessibility settings. For the two Naver Map runs, install the app separately, complete onboarding, and dismiss any modal dialogs. Bring its map home to the foreground before each run. For the guide, import the `.litertlm` file before starting the probe. The guide probe uses the English `Search on NAVER Maps` label.
+Install `app-debug.apk`, `fixture-debug.apk`, and `fixture-debug-androidTest.apk` from the corresponding `build/outputs/apk/` directories. Add `-t` when installing the instrumentation APK with `adb`. In Hyperchat open **화면 접근 안내 보기**, accept the disclosure, then enable Hyperchat in Android Accessibility settings. For the two Naver Map runs, install the app separately, complete onboarding, and dismiss any modal dialogs. Bring its map home to the foreground before each run. For the guide, import the `.litertlm` file before starting the probe. The guide probe uses the English `Search on NAVER Maps` label.
 
 ```sh
 adb shell am instrument -w -e mode fixture dev.hanzicho.hyperchat.fixture.test/dev.hanzicho.hyperchat.fixture.HyperchatProbe

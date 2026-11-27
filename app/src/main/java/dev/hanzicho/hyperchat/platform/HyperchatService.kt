@@ -14,6 +14,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.EditorInfo
 import dev.hanzicho.hyperchat.HyperchatApp
 import dev.hanzicho.hyperchat.core.Direction
+import dev.hanzicho.hyperchat.core.ResultSelection
 import dev.hanzicho.hyperchat.core.ScreenCommand
 import dev.hanzicho.hyperchat.ui.OverlayController
 import dev.hanzicho.hyperchat.ui.ShortcutTrigger
@@ -29,10 +30,18 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
     private var overlay: OverlayController? = null
     private var running: SearchRun? = null
     private val paths by lazy { ScreenPathCache(this) }
-    private val events = ArrayDeque<String>(EVENT_LIMIT)
+    private val events = ArrayDeque<ScreenEvent>(EVENT_LIMIT)
     private var shortcutController: AccessibilityButtonController? = null
     private val openFromShortcut: () -> Unit = { overlay?.runShortcut(ShortcutTrigger.SYSTEM) }
     private val showFloatingBubble: () -> Unit = { overlay?.restoreLauncher() }
+    private val disconnectService: () -> Unit = {
+        connected = false
+        running?.interrupted = true
+        synchronized(events) { events.clear() }
+        overlay?.close()
+        overlay = null
+        disableSelf()
+    }
     private val shortcutCallback = object : AccessibilityButtonController.AccessibilityButtonCallback() {
         override fun onClicked(controller: AccessibilityButtonController) = openFromShortcut()
     }
@@ -45,6 +54,14 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        val app = application as HyperchatApp
+        if (!app.screenAccessAccepted) {
+            android.widget.Toast.makeText(this, dev.hanzicho.hyperchat.R.string.consent_required,
+                android.widget.Toast.LENGTH_LONG).show()
+            disableSelf()
+            return
+        }
+        app.disconnectScreenAccess = disconnectService
         connected = true
         record("LIFECYCLE", "서비스 연결")
         overlay?.close()
@@ -70,6 +87,7 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
         shortcutController?.unregisterAccessibilityButtonCallback(shortcutCallback)
         shortcutController = null
         val app = application as HyperchatApp
+        if (app.disconnectScreenAccess === disconnectService) app.disconnectScreenAccess = null
         if (app.systemShortcut === openFromShortcut) app.systemShortcut = null
         if (app.restoreBubble === showFloatingBubble) app.restoreBubble = null
         overlay?.close()
@@ -83,6 +101,7 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val run = running ?: return
+        if (!connected || run.interrupted) return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.packageName?.toString() != run.target.packageName &&
             isOtherApplicationWindow(event.windowId, run.target.packageName)
@@ -103,8 +122,8 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
                     if (node.screen.editable) node.screen.copy(text = node.hint) else node.screen
                 }
             }
-            record("OBSERVE", "전면 앱의 접근성 화면 정보 확인")
-            ScreenSnapshot(target.packageName, target.windowId, nodes, eventSnapshot())
+            record("OBSERVE", "전면 앱의 접근성 화면 정보 확인", target)
+            ScreenSnapshot(target.packageName, target.windowId, nodes, eventSnapshot(target))
         }
     }
 
@@ -124,14 +143,14 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
         running = run
         return try {
             when (command) {
-                is ScreenCommand.Search -> executeSearch(run, SearchSemantics.displayText(command.query), command.openResult)
+                is ScreenCommand.Search -> executeSearch(run, SearchSemantics.displayText(command.query), command.result)
                 is ScreenCommand.Open -> openInScreen(run, command.label)
                 is ScreenCommand.Type -> typeInFocusedField(run, command.text)
                 is ScreenCommand.Navigate -> navigate(run, command.direction)
                 is ScreenCommand.Invalid -> stop(command.reason)
             }
         } catch (stop: SearchStopped) {
-            record("STOP", stop.message.orEmpty())
+            record("STOP", "실행 조건 또는 결과를 확인하지 못함")
             SearchResult(SearchOutcome.STOPPED, stop.message.orEmpty())
         } catch (cancelled: CancellationException) {
             record("STOP", "화면 동작 취소")
@@ -141,7 +160,7 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
         }
     }
 
-    private suspend fun executeSearch(run: SearchRun, query: String, openResult: Boolean): SearchResult {
+    private suspend fun executeSearch(run: SearchRun, query: String, selection: ResultSelection): SearchResult {
         if (query.isBlank() || query.length > QUERY_LIMIT || query.any(Char::isISOControl)) {
             stop("검색어는 한 줄에 80자 이내로 입력해 주세요.")
         }
@@ -149,14 +168,14 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
             paths.key(run.target.packageName, fingerprint(run, tree), PathIntent.SEARCH)?.let(::SearchPath)
         }
         try {
-            return searchWithPath(run, query, openResult, path)
+            return searchWithPath(run, query, selection, path)
         } finally {
             if (path?.stale == true) paths.forget(path.key)
         }
     }
 
     private suspend fun searchWithPath(
-        run: SearchRun, query: String, openResult: Boolean, path: SearchPath?,
+        run: SearchRun, query: String, selection: ResultSelection, path: SearchPath?,
     ): SearchResult {
         val hasInput = inspect(run) { tree ->
             findInput(run, tree, false) != null
@@ -190,10 +209,12 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
             inputWithQuery(run, tree, query, !hasInput) != null
         }
 
+        var previousDestination: String? = null
         val (previousResult, needsEditor) = inspect(run) { tree ->
             val field = inputWithQuery(run, tree, query, !hasInput)
                 ?: stop("제출 전에 검색어가 바뀌었습니다.")
-            val baseline = resultSignature(run, tree, query)
+            previousDestination = ForegroundSemantics.resultDestination(run.target.packageName, tree.nodes, query, selection)?.title
+            val baseline = resultSignature(run, tree, query, previousDestination)
             val action = CachedScreenAction.SUBMIT
             val live = findSubmit(run, tree)
             val submit = path?.pick(tree, action, live) ?: live
@@ -217,16 +238,26 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
         }
         record("ACTION", "검색 제출")
         val timeout = if (isSearchTarget(run.target.packageName)) RESULT_TIMEOUT else GENERAL_RESULT_TIMEOUT
+        var observedTitle: String? = null
         val verified = await(run, timeout, allowWindowChange = true) { tree ->
-            val evidence = resultSignature(run, tree, query)
-            evidence != null && evidence != previousResult
+            observedTitle = ForegroundSemantics.resultDestination(run.target.packageName, tree.nodes, query, selection)?.title
+            val evidence = resultSignature(run, tree, query, observedTitle)
+            evidence != null && evidence != previousResult && (observedTitle == null || observedTitle != previousDestination)
         }
         if (!verified) {
             record("VERIFY", "검색 제출 후 결과 확인 시간 초과")
             return SearchResult(SearchOutcome.SUBMITTED, "검색어를 보냈어요. 결과는 현재 앱 화면에서 확인해 주세요.")
         }
-        val result = if (openResult) openVisibleTarget(run, query, resultRow = true)
-            else SearchResult(SearchOutcome.VERIFIED, "검색 결과 화면을 열었습니다.")
+        val result = if (selection == ResultSelection.NONE) {
+            SearchResult(SearchOutcome.VERIFIED, "검색 결과 화면을 열었습니다.")
+        } else if (observedTitle == null) {
+            SearchResult(SearchOutcome.SUBMITTED, "검색 결과가 표시됐어요. 안전하게 열 항목을 확인할 수 없어 화면에서 직접 선택해 주세요.")
+        } else {
+            openVisibleTarget(run, requireNotNull(observedTitle)) { nodes ->
+                ForegroundSemantics.resultDestination(run.target.packageName, nodes, query, selection)
+                    ?.takeIf { it.title == observedTitle }?.index
+            }
+        }
         if (result.outcome == SearchOutcome.VERIFIED) path?.save()
         record("VERIFY", "화면에서 검색 결과 확인")
         return result.copy(cacheHit = path?.reused == true)
@@ -247,10 +278,10 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
     private inline fun legacyMatch(targetPackage: String, find: (String) -> Int?): Int? =
         if (isSearchTarget(targetPackage)) find(targetPackage) else null
 
-    private fun resultSignature(run: SearchRun, tree: ScreenTree, query: String): String? {
+    private fun resultSignature(run: SearchRun, tree: ScreenTree, query: String, destinationTitle: String?): String? {
         val target = run.target.packageName
         val legacy = if (isSearchTarget(target)) SearchSemantics.resultSignature(target, tree.nodes, query) else null
-        return legacy ?: ForegroundSemantics.resultSignature(tree.nodes, query)
+        return legacy ?: destinationTitle ?: ForegroundSemantics.resultSignature(tree.nodes, query)
     }
 
     private fun setText(run: SearchRun, tree: ScreenTree, field: Int, value: String) {
@@ -277,34 +308,61 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
     }
 
     private suspend fun openInScreen(run: SearchRun, label: String): SearchResult {
-        val (visible, canSearch) = inspect(run) { tree ->
-            (ForegroundSemantics.openTarget(tree.nodes, label) != null) to
-                (findEntry(run, tree) != null || findInput(run, tree, false) != null)
+        if (inspect(run) { tree ->
+                ForegroundSemantics.tabSelected(run.target.packageName, tree.nodes, label) ||
+                    ForegroundSemantics.searchFormVisible(run.target.packageName, tree.nodes, label) ||
+                    ForegroundSemantics.aimpMenuVisible(run.target.packageName, tree.nodes, label)
+            }) return SearchResult(SearchOutcome.VERIFIED, "요청한 화면이 이미 열려 있어요.")
+        fun find(nodes: List<SearchNode>): Int? {
+            val index = ForegroundSemantics.openTarget(run.target.packageName, nodes, label)
+            if (index == null && ForegroundSemantics.hasMatchingControl(nodes, label)) {
+                stop("이 항목을 눌렀을 때 화면 이동만 일어나는지 확인할 수 없어요. 앱에서 직접 선택해 주세요.")
+            }
+            return index
         }
-        if (visible) return openVisibleTarget(run, label)
-        if (canSearch) return executeSearch(run, label, true)
+        val (visible, canSearch) = inspect(run) { tree ->
+            (find(tree.nodes) != null) to (findEntry(run, tree) != null || findInput(run, tree, false) != null)
+        }
+        if (visible) return openVisibleTarget(run, label, ::find)
+        if (ForegroundSemantics.requiresVisibleOpenTarget(run.target.packageName)) {
+            stop("이 화면에서 안전하게 열 수 있는 메뉴를 확인하지 못했어요. 앱에서 직접 선택해 주세요.")
+        }
+        if (canSearch) return executeSearch(run, label, ResultSelection.EXACT)
         repeat(MAX_SCROLLS) {
             if (!scroll(run, true)) stop("화면에서 ‘$label’ 항목을 찾지 못했어요.")
-            if (inspect(run) { ForegroundSemantics.openTarget(it.nodes, label) != null }) {
-                return openVisibleTarget(run, label)
+            if (inspect(run) { find(it.nodes) != null }) {
+                return openVisibleTarget(run, label, ::find)
             }
         }
         stop("화면을 확인했지만 ‘$label’ 항목을 찾지 못했어요.")
     }
 
-    private suspend fun openVisibleTarget(run: SearchRun, label: String, resultRow: Boolean = false): SearchResult {
-        val before = inspect(run) { tree ->
-            val index = if (resultRow) ForegroundSemantics.resultTarget(tree.nodes, label)
-                else ForegroundSemantics.openTarget(tree.nodes, label)
+    private suspend fun openVisibleTarget(run: SearchRun, label: String, find: (List<SearchNode>) -> Int?): SearchResult {
+        var sourceId = ""
+        val (previousTitles, previouslyAtDestination) = inspect(run) { tree ->
+            val index = find(tree.nodes)
             if (index == null) stop("‘$label’과 일치하는 항목을 하나로 확인하지 못했어요.")
+            sourceId = tree.nodes[index].screen.viewId
+            val state = navigationState(run, tree, label, sourceId)
             act(run, tree, index, AccessibilityNodeInfo.ACTION_CLICK)
-            ForegroundSemantics.destinationEvidence(tree.nodes, label)
+            state
         }
         val verified = await(run, GENERAL_RESULT_TIMEOUT, allowWindowChange = true) { tree ->
-            ForegroundSemantics.destinationEvidence(tree.nodes, label).any { it !in before }
+            val (titles, atDestination) = navigationState(run, tree, label, sourceId)
+            titles.any { it !in previousTitles } || (atDestination && !previouslyAtDestination)
         }
         return if (verified) SearchResult(SearchOutcome.VERIFIED, "요청한 결과 화면을 열었습니다.")
         else SearchResult(SearchOutcome.SUBMITTED, "항목을 눌렀어요. 열린 화면을 확인해 주세요.")
+    }
+
+    private fun navigationState(run: SearchRun, tree: ScreenTree, label: String, sourceId: String): Pair<Set<ScreenNode>, Boolean> {
+        if (ForegroundSemantics.isAimpMenuRequest(run.target.packageName, label)) {
+            return emptySet<ScreenNode>() to ForegroundSemantics.aimpMenuVisible(run.target.packageName, tree.nodes, label)
+        }
+        return ForegroundSemantics.destinationEvidence(tree.nodes, label) to
+            (ForegroundSemantics.tabSelected(run.target.packageName, tree.nodes, label) ||
+                ForegroundSemantics.searchFormVisible(run.target.packageName, tree.nodes, label) ||
+                ForegroundSemantics.cardBrowserVisible(run.target.packageName, tree.nodes, sourceId))
     }
 
     private suspend fun navigate(run: SearchRun, direction: Direction): SearchResult {
@@ -313,9 +371,7 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
             return SearchResult(SearchOutcome.VERIFIED, "화면을 스크롤했습니다.")
         }
         val before = inspect(run) { tree ->
-            val index = listOf("뒤로", "뒤로 이동", "위로 이동", "Navigate up", "Back").mapNotNull { label ->
-                ForegroundSemantics.openTarget(tree.nodes, label)
-            }.distinct().singleOrNull() ?: stop("현재 앱의 뒤로 가기 버튼을 확인하지 못했어요.")
+            val index = ForegroundSemantics.backButton(tree.nodes) ?: stop("현재 앱의 뒤로 가기 버튼을 확인하지 못했어요.")
             act(run, tree, index, AccessibilityNodeInfo.ACTION_CLICK)
             tree.nodes.toList()
         }
@@ -413,6 +469,9 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
             node.packageName?.toString() != run.target.packageName ||
             !node.isEnabled || !node.isVisibleToUser || isSensitive(node) ||
             label(node.viewIdResourceName) != observed.viewId || node.isEditable != observed.editable ||
+            label(node.className) != tree.nodes[index].className || node.isCheckable != tree.nodes[index].checkable ||
+            node.collectionItemInfo?.rowIndex != tree.nodes[index].collectionRow ||
+            node.collectionItemInfo?.columnIndex != tree.nodes[index].collectionColumn ||
             label(node.text) != observed.text || label(node.contentDescription) != observed.description ||
             node.actionList.none { it.id == action } ||
             !node.performAction(action, arguments)
@@ -494,6 +553,7 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
 
     private fun readTree(root: AccessibilityNodeInfo, targetPackage: String): ScreenTree {
         val tree = ScreenTree(root.windowId)
+        val searchEditorId by lazy(LazyThreadSafetyMode.NONE) { activeSearchEditorId(targetPackage) }
         data class PendingNode(val node: AccessibilityNodeInfo, val parent: Int, val depth: Int)
         val pending = ArrayDeque<PendingNode>().apply { add(PendingNode(root, -1, 0)) }
         try {
@@ -514,7 +574,7 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
                             text = label(node.text),
                             description = label(node.contentDescription),
                             viewId = label(node.viewIdResourceName),
-                            clickable = node.isClickable && actions.any { it.id == AccessibilityNodeInfo.ACTION_CLICK },
+                            clickable = node.isEnabled && node.isClickable && actions.any { it.id == AccessibilityNodeInfo.ACTION_CLICK },
                             editable = node.isEditable,
                             focused = node.isFocused,
                         ),
@@ -526,6 +586,14 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
                         canSetText = actions.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT },
                         scrollForward = actions.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD },
                         scrollBackward = actions.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD },
+                        className = label(node.className),
+                        checkable = node.isCheckable,
+                        selected = node.isSelected,
+                        checked = checked(node),
+                        collectionRow = node.collectionItemInfo?.rowIndex,
+                        collectionColumn = node.collectionItemInfo?.columnIndex,
+                        searchEditor = node.isEditable && node.isFocused && node.viewIdResourceName != null &&
+                            node.viewIdResourceName == searchEditorId,
                     )
                 )
                 if (depth == TREE_DEPTH) continue
@@ -543,14 +611,33 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
         }
     }
 
-    private fun record(category: String, message: String) = synchronized(events) {
-        if (events.size == EVENT_LIMIT) events.removeFirst()
-        events.addLast("[$category] $message")
+    private fun activeSearchEditorId(targetPackage: String): String? {
+        if (Build.VERSION.SDK_INT < 33) return null
+        val method = inputMethod ?: return null
+        val editor = method.currentInputEditorInfo ?: return null
+        if (!method.currentInputStarted || editor.packageName != targetPackage || editor.fieldId <= 0 ||
+            (editor.imeOptions and EditorInfo.IME_MASK_ACTION) != EditorInfo.IME_ACTION_SEARCH) return null
+        return try {
+            packageManager.getResourcesForApplication(targetPackage).getResourceName(editor.fieldId)
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+            null
+        } catch (_: android.content.res.Resources.NotFoundException) {
+            null
+        }
     }
 
-    private fun eventSnapshot(): List<String> = synchronized(events) { events.toList() }
+    private fun record(category: String, message: String, target: AppTarget? = running?.target) = synchronized(events) {
+        if (!connected) return@synchronized
+        if (events.size == EVENT_LIMIT) events.removeFirst()
+        events.addLast(ScreenEvent(target, "[$category] $message"))
+    }
+
+    private fun eventSnapshot(target: AppTarget): List<String> = synchronized(events) {
+        events.filter { it.target == target }.map { it.message }
+    }
 
     private data class AppTarget(val packageName: String, val windowId: Int)
+    private data class ScreenEvent(val target: AppTarget?, val message: String)
     private class AppRoot(val target: AppTarget, val root: AccessibilityNodeInfo) : AutoCloseable {
         override fun close() = release(root)
     }
@@ -628,6 +715,10 @@ class HyperchatService : AccessibilityService(), ScreenBridge {
         private fun label(value: CharSequence?): String = value?.take(LABEL_LIMIT)?.toString().orEmpty()
         private fun isSensitive(node: AccessibilityNodeInfo): Boolean =
             node.isPassword || (Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive)
+
+        @Suppress("DEPRECATION")
+        private fun checked(node: AccessibilityNodeInfo): Boolean =
+            if (Build.VERSION.SDK_INT >= 36) node.checked == AccessibilityNodeInfo.CHECKED_STATE_TRUE else node.isChecked
 
         private fun stop(message: String): Nothing = throw SearchStopped(message)
 

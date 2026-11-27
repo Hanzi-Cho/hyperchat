@@ -18,12 +18,20 @@ adb shell am start -n dev.hanzicho.hyperchat/.ui.SettingsActivity
 
 ## 첫 실행 · Android 설정에서 디스플레이 열기
 
-1. **Hyperchat → 화면 접근 안내 보기**에서 읽는 정보와 사용 목적을 확인하고 **동의하고 Android 설정 열기**를 누릅니다. Android 접근성 설정에서 **Hyperchat → 사용**을 켜고 시스템 대화상자를 확인합니다.
+1. **Hyperchat → 화면 접근 안내 보기**에서 읽는 정보와 사용 목적을 확인하고 **동의하고 Android 설정 열기**를 누릅니다. Android 접근성 설정에서 **Hyperchat**을 선택합니다. 이 항목이 회색이면 아래의 **APK 직접 설치 시 접근성 켜기**를 먼저 따르세요. 기기에 표시된 서비스 스위치를 켜고 Android의 권한 대화상자를 확인합니다.
 2. **Android 설정의 첫 화면**으로 돌아갑니다. 아래 명령은 Android 16 영어 화면 기준입니다. **Display & touch** 행이 보이도록 필요하면 직접 스크롤합니다.
 3. 떠 있는 Hyperchat 버블을 누르고 `버튼 목록` 또는 `/controls`를 보냅니다. 현재 화면에서 읽을 수 있는 버튼 이름을 최대 8개 보여줍니다.
 4. `Open Display & touch`를 보내고 제안된 항목 이름을 확인한 뒤 **동작 실행**을 누릅니다. 설정의 **Display & touch** 화면에서 **Brightness level**을 찾으면 성공입니다. 버블이 내용을 가리면 뒤로 가기를 한 번 눌러 접습니다.
 
-화면 이름은 Android 언어와 제조사에 따라 달라집니다. 다른 화면에서 시도할 때는 현재 보이는 항목 이름을 사용하세요. GitHub에서 받은 APK를 설치할 때 Android가 설치 출처를 확인하거나 접근성에 **제한된 설정**을 표시할 수 있습니다. 기기의 안내와 개발자 정보를 확인한 뒤 진행하세요. 접근은 **Hyperchat → 화면 접근 동의 철회**에서 끌 수 있습니다. [Android 제한된 설정 안내](https://support.google.com/android/answer/12623953?hl=ko)
+화면 이름은 Android 언어와 제조사에 따라 달라집니다. 다른 화면에서 시도할 때는 현재 보이는 항목 이름을 사용하세요. 접근은 **Hyperchat → 화면 접근 동의 철회**에서 끌 수 있습니다.
+
+### APK 직접 설치 시 접근성 켜기
+
+Android 16 영어 에뮬레이터에서 파일 앱으로 설치한 뒤 확인한 순서입니다. 접근성은 다른 앱의 화면을 읽고 조작할 수 있는 권한입니다. 배포처와 앱의 고지를 확인한 후 본인이 허용할 때만 진행하세요. [Android 제한된 설정 안내](https://support.google.com/android/answer/12623953?hl=ko)
+
+1. 접근성에서 회색 **Hyperchat · Controlled by Restricted Setting**을 누르면 **App was denied access**가 나타납니다. **Close**를 누릅니다.
+2. Android **설정 → 앱 → Hyperchat**의 **App info**를 엽니다. 오른쪽 위 **⋮ → Allow restricted settings**를 선택합니다.
+3. **설정 → 접근성 → Hyperchat**으로 돌아갑니다. 시험 기기에서는 **Hyperchat shortcut** 오른쪽 스위치를 켜자 권한 창이 열렸습니다. **Allow → Got it**을 누르면 버블이 나타납니다. 이제 위의 첫 실행 2번부터 진행하세요.
 
 ## 누구에게 유용한가
 
